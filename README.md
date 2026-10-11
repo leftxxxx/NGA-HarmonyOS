@@ -1,3 +1,7 @@
+原来的代码链接：https://github.com/ymback/NGA-CLIENT-VER-OPEN-SOURCE
+
+个人没有编程基础，全程vibe codeing 有任何问题欢迎指出
+
 # NGA HarmonyOS
 
 NGA 论坛 HarmonyOS 原生客户端，使用 ArkTS、ArkUI 和 Stage 模型开发。
