@@ -1,0 +1,10 @@
+{
+  "app": {
+    "bundleName": "nga_harmony.huawei.com",
+    "vendor": "example",
+    "versionCode": 3076,
+    "versionName": "3.7.6",
+    "icon": "$media:layered_image",
+    "label": "$string:app_name"
+  }
+}

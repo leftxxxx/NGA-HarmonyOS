@@ -1,0 +1,104 @@
+{
+  "data": {
+    "__GLOBAL": {
+      "_ATTACH_BASE_VIEW": "img.nga.cn/attachments"
+    },
+    "__U": {
+      "1": {
+        "uid": 1,
+        "username": "公开用户甲",
+        "avatar": ""
+      },
+      "2": {
+        "uid": 2,
+        "username": "公开用户乙",
+        "avatar": "",
+        "remark": {
+          "1": {
+            "0": 1,
+            "1": 1,
+            "2": 0,
+            "3": 2,
+            "4": "sv	demo_game	rl	示例服务器	re	example-realm	ch	演示角色	rc	示例种族	cl	示例职业	fa	示例阵营	tl		av	0	it	0	mh	0	gd	UNSPECIFIED	ci	demo	"
+          }
+        }
+      }
+    },
+    "__R": {
+      "0": {
+        "content": "在2026暴雪嘉年华下一步计划座谈会上，和首席内容设计师Jake Miller以及副游戏总监Paul Kubit一起，抢先了解《魔兽世界》的下一个篇章，从即将推出的第3赛季的详细情报，到“至暗之夜”的最后一个大型内容更新——“临界蚀刻”的故事和玩法，再到这期间的所有新冒险、功能和惊喜。<br/>[align=center]<br/>[img]./mon_20",
+        "alterinfo": "",
+        "tid": 47552220,
+        "score": 11,
+        "score_2": 0,
+        "postdate": "2026-09-14 00:38",
+        "authorid": 1,
+        "subject": "《魔兽世界》：“至暗之夜”——下一步计划座谈会总结",
+        "type": 167772160,
+        "fid": 7,
+        "pid": 0,
+        "recommend": 10,
+        "lou": 0,
+        "content_length": 9706,
+        "from_client": "0 /",
+        "postdatetimestamp": 1789317534
+      },
+      "1": {
+        "pid": 881645206,
+        "fid": 7,
+        "tid": 47552220,
+        "authorid": 2,
+        "type": 0,
+        "score": 10,
+        "score_2": 0,
+        "recommend": 0,
+        "postdate": "2026-09-14 04:27",
+        "subject": "",
+        "alterinfo": "",
+        "content": "感觉公式化更新[s:ac:晕]",
+        "lou": 1,
+        "content_length": 12,
+        "from_client": "0 /",
+        "postdatetimestamp": 1789331226
+      }
+    },
+    "__T": {
+      "fid": 7,
+      "tid": 47552220,
+      "topic_misc": "AQAAACI",
+      "subject": "《魔兽世界》：“至暗之夜”——下一步计划座谈会总结",
+      "locked": 0,
+      "recommend": 10,
+      "quote_to": "",
+      "quote_from": 0,
+      "type": 134217728,
+      "replies": 38,
+      "authorid": 1,
+      "postdate": 1789317534,
+      "lastpost": 1790817728,
+      "jdata": "",
+      "author": "公开用户甲",
+      "lastposter": "公开用户",
+      "digest": 0,
+      "lastmodify": 1791008812,
+      "tpid": 0,
+      "topic_misc_var": {
+        "1": 34
+      },
+      "post_misc_var": {
+        "content_length": 9706,
+        "fid": 7
+      },
+      "this_visit_rows": 39
+    },
+    "__F": {
+      "name": "艾泽拉斯议事厅 - Hall of Azeroth"
+    },
+    "__R__ROWS": 20,
+    "__R__ROWS_PAGE": 20,
+    "__ROWS": 39,
+    "__PAGE": 1
+  },
+  "encode": "GBK",
+  "time": 1791037197
+}

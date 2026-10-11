@@ -1,0 +1,45 @@
+{
+  "capturedDate": "2026-10-03",
+  "sources": [
+    {
+      "file": "topic-list-fid7.json",
+      "url": "https://bbs.nga.cn/thread.php?fid=7&page=1&lite=js&noprefix",
+      "status": 200,
+      "contentType": "text/html",
+      "serverEncoding": "gbk",
+      "source": "Public unauthenticated GET, GBK decoded; success fixture limited to first two topics and authors anonymized."
+    },
+    {
+      "file": "topic-list-page-limit.json",
+      "url": "https://bbs.nga.cn/thread.php?fid=7&page=999999&lite=js&noprefix",
+      "status": 200,
+      "contentType": "text/javascript; charset=GBK",
+      "serverEncoding": "gbk",
+      "source": "Public unauthenticated GET, GBK decoded; success fixture limited to first two topics and authors anonymized."
+    },
+    {
+      "file": "topic-list-login-required.json",
+      "url": "https://bbs.nga.cn/thread.php?fid=-7&page=1&lite=js&noprefix",
+      "status": 403,
+      "contentType": "text/javascript; charset=GBK",
+      "serverEncoding": "gbk",
+      "source": "Public unauthenticated GET, GBK decoded; success fixture limited to first two topics and authors anonymized."
+    },
+    {
+      "file": "topic-list-invalid-board.json",
+      "url": "https://bbs.nga.cn/thread.php?fid=123456789&page=1&lite=js&noprefix",
+      "status": 404,
+      "contentType": "text/javascript; charset=GBK",
+      "serverEncoding": "gbk",
+      "source": "Public unauthenticated GET, GBK decoded; success fixture limited to first two topics and authors anonymized."
+    },
+    {
+      "file": "thread-tid47552220.txt",
+      "url": "https://bbs.nga.cn/read.php?page=1&__output=8&noprefix&v2&tid=47552220",
+      "status": 200,
+      "contentType": "text/javascript; charset=GBK",
+      "serverEncoding": "GBK",
+      "source": "Public unauthenticated GET; excerpt keeps first two replies and raw TAB in __U remark, shortens content to 180 chars, and anonymizes user IDs/names plus game character, realm and profile metadata."
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "error": {
+    "0": "2048:超过限制,只有在使用 <a href='/thread.php?fid=7&order_by=postdatedesc&nounion=1'>[单一版面主题发布时间排序]</a> 时可翻阅超过100页",
+    "1": "",
+    "2": ""
+  },
+  "data": {
+    "__MESSAGE": {
+      "0": 2048,
+      "1": "超过限制,只有在使用 <a href='/thread.php?fid=7&order_by=postdatedesc&nounion=1'>[单一版面主题发布时间排序]</a> 时可翻阅超过100页",
+      "3": 200
+    }
+  },
+  "encode": "gbk",
+  "time": 1791036768
+}

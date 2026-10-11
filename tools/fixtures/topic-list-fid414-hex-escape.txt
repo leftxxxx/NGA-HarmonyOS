@@ -1,0 +1,1 @@
+window.script_muti_get_var_store={"data":{"__F":{"fid":414,"name":"游戏综合讨论"},"__T":{"60":{"tid":414001,"fid":414,"subject":"合成话题","author":"合成用户","authorid":1,"jdata":"{\"skw\":\"alpha\x5C\"beta\"}"}}}};

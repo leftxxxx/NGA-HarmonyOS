@@ -1,0 +1,47 @@
+# Dependencies and build output
+**/node_modules/
+**/oh_modules/
+**/build/
+**/.hvigor/
+**/.preview/
+**/.test/
+**/.cxx/
+**/__pycache__/
+*.pyc
+
+# Local IDE, SDK and diagnostics
+**/local.properties
+**/.idea/
+**/.cache/
+**/.appanalyzer/
+**/.codeartsdoer/
+**/.codegenie/
+**/lspLog/
+/sdk/
+/auto/
+/dist/
+*.log
+_build_log*.txt
+.DS_Store
+Thumbs.db
+
+# Signing material and local credential files
+/sign/
+/sign_hap.py
+/sign_hap.bat
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.p7b
+*.pem
+*.key
+*.cer
+*.crt
+.env
+.env.*
+
+# Installation packages
+*.hap
+*.app
+*.hsp

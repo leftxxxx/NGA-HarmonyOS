@@ -1,0 +1,10 @@
+{
+  "source": "Unauthenticated public read.php GET; exact main-post excerpt and reply 17, no user credentials or author data.",
+  "capturedDate": "2026-10-04",
+  "url": "https://bbs.nga.cn/read.php?tid=47664817&page=1&__output=8&noprefix&v2",
+  "attachmentBase": "img.nga.cn/attachments",
+  "mainContent": "谁能找出比这套更帅的？<br/>[img]./mon_202610/03/7Q82-2yhpZhT3cSsg-f2.jpg[/img]<br/>[img]./mon_202610/03/7Q83-uyeZgT3cSsg-f2.jpg[/img]<br/><br/>想不到这么多人喜欢我这套幻化，用AI绘制一下更好看。<br/>[img]./mon_202610/04/7Q41-8jv3ZhT3cSsg-ez.jpg[/img]",
+  "reply17Content": "[img]./mon_202610/03/7Q85-9srsZdT3cS1z4-140.webp[/img]<br/><br/>[s:a2:jojo立5]",
+  "otherReplyEmoticonTokens": ["[s:ac:上]", "[s:ac:哭笑]", "[s:ac:擦汗]", "[s:ac:汗]"],
+  "legacyMappingSource": "https://img4.nga.cn/common_res/js_bbscode_core.js?1342409"
+}

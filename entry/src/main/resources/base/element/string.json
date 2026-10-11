@@ -1,0 +1,248 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "module description"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "description"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "NGA客户端"
+    },
+    {
+      "name": "app_name",
+      "value": "NGA客户端"
+    },
+    {
+      "name": "menu_login",
+      "value": "登录"
+    },
+    {
+      "name": "username",
+      "value": "用户名"
+    },
+    {
+      "name": "login_user_hint",
+      "value": "输入邮箱或者NGA昵称"
+    },
+    {
+      "name": "password",
+      "value": "密码"
+    },
+    {
+      "name": "authcode",
+      "value": "验证码"
+    },
+    {
+      "name": "login",
+      "value": "登录"
+    },
+    {
+      "name": "login_successfully",
+      "value": "登录成功"
+    },
+    {
+      "name": "cancel",
+      "value": "取消"
+    },
+    {
+      "name": "back",
+      "value": "返回"
+    },
+    {
+      "name": "network_error",
+      "value": "网络错误"
+    },
+    {
+      "name": "filter_keywords_hint",
+      "value": "(输入关键字后按回车添加)"
+    },
+    {
+      "name": "settings_title",
+      "value": "设置"
+    },
+    {
+      "name": "settings_group_appearance",
+      "value": "外观"
+    },
+    {
+      "name": "settings_group_font",
+      "value": "字体"
+    },
+    {
+      "name": "settings_group_user",
+      "value": "用户"
+    },
+    {
+      "name": "settings_group_browse",
+      "value": "浏览"
+    },
+    {
+      "name": "settings_group_other",
+      "value": "其他"
+    },
+    {
+      "name": "settings_theme",
+      "value": "主题配色"
+    },
+    {
+      "name": "settings_night_mode",
+      "value": "夜间模式"
+    },
+    {
+      "name": "settings_font_size",
+      "value": "正文字号"
+    },
+    {
+      "name": "settings_font_small",
+      "value": "小"
+    },
+    {
+      "name": "settings_font_normal",
+      "value": "标准"
+    },
+    {
+      "name": "settings_font_large",
+      "value": "大"
+    },
+    {
+      "name": "settings_font_xlarge",
+      "value": "特大"
+    },
+    {
+      "name": "settings_font_preview",
+      "value": "预览：正文内容将按此字号显示，用于直观感受阅读效果。"
+    },
+    {
+      "name": "settings_blacklist",
+      "value": "黑名单"
+    },
+    {
+      "name": "settings_keyword_filter",
+      "value": "关键词屏蔽"
+    },
+    {
+      "name": "settings_load_pic",
+      "value": "加载图片策略"
+    },
+    {
+      "name": "settings_load_pic_always",
+      "value": "始终加载"
+    },
+    {
+      "name": "settings_load_pic_never",
+      "value": "始终关闭"
+    },
+    {
+      "name": "settings_load_pic_wifi",
+      "value": "只在 wifi 下加载"
+    },
+    {
+      "name": "settings_domain",
+      "value": "NGA 域名"
+    },
+    {
+      "name": "settings_clear_cache",
+      "value": "清除缓存"
+    },
+    {
+      "name": "settings_no_cache",
+      "value": "无缓存可清除"
+    },
+    {
+      "name": "settings_cache_cleared",
+      "value": "缓存清除成功"
+    },
+    {
+      "name": "settings_about",
+      "value": "关于"
+    },
+    {
+      "name": "settings_on",
+      "value": "开"
+    },
+    {
+      "name": "settings_off",
+      "value": "关"
+    },
+    {
+      "name": "login_no_third_party",
+      "value": "不支持QQ和微博登录"
+    },
+    {
+      "name": "login_content_missing",
+      "value": "内容缺少，请检查后再试"
+    },
+    {
+      "name": "login_authcode_load_fail",
+      "value": "载入验证码失败"
+    },
+    {
+      "name": "login_logout",
+      "value": "退出登录"
+    },
+    {
+      "name": "login_form_mode",
+      "value": "账号密码登录"
+    },
+    {
+      "name": "login_web_mode",
+      "value": "WebView登录"
+    },
+    {
+      "name": "login_update_authcode",
+      "value": "更新验证码"
+    },
+    {
+      "name": "login_password_hint",
+      "value": "输入密码"
+    },
+    {
+      "name": "login_relogin",
+      "value": "重新登录"
+    },
+    {
+      "name": "login_web_load_fail",
+      "value": "加载失败"
+    },
+    {
+      "name": "login_authcode_loading",
+      "value": "加载中..."
+    },
+    {
+      "name": "login_authcode_empty",
+      "value": "无验证码"
+    },
+    {
+      "name": "blacklist_clear_all",
+      "value": "全部清除"
+    },
+    {
+      "name": "blacklist_delete",
+      "value": "删除"
+    },
+    {
+      "name": "blacklist_empty",
+      "value": "暂无黑名单用户"
+    },
+    {
+      "name": "keyword_add",
+      "value": "添加"
+    },
+    {
+      "name": "keyword_delete",
+      "value": "删除"
+    },
+    {
+      "name": "keyword_empty",
+      "value": "暂无关键词"
+    },
+    {
+      "name": "settings_theme_blue",
+      "value": "白蓝"
+    }
+  ]
+}
