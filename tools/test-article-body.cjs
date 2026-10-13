@@ -62,6 +62,17 @@ const IMAGE = 'https://img.nga.cn/attachments/mon_202610/08/fixture.png';
 const link = url => 'nga-image:' + encodeURIComponent(url);
 const document = content => '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>' +
   renderArticleContent(content) + '</body></html>';
+const themedDocument = (content, night) => {
+  const background = night ? '#192333' : '#ffffff', text = night ? '#e9eff8' : '#182538';
+  const accent = night ? '#8dbeff' : '#1765c1';
+  return '<!DOCTYPE html><html><head><meta charset="utf-8">' +
+    '<meta name="viewport" content="width=device-width,initial-scale=1.0"><style>' +
+    'html{background:' + background + ';}body{background:' + background + ';color:' + text +
+    ';font-size:16px;line-height:1.75;padding:0;margin:0;}' +
+    'blockquote{margin:8px 0;padding:8px;border-left:3px solid ' + accent + ';}' +
+    (night ? 'img.invertFilter{filter:invert(100%);}' : '') + 'a{color:' + accent + ';}' +
+    '</style></head><body>' + renderArticleContent(content) + '</body></html>';
+};
 
 function defer() {
   let resolve, reject;
@@ -86,7 +97,7 @@ function fixture() {
   Object.assign(host, { html: document('正文[img]' + IMAGE + '[/img]'),
     baseUrl: 'https://bbs.nga.cn/', bodyBackground: '#ffffffff', attached: true,
     showImageViewer: false, activeImageUrl: '', isSavingImage: false, bodyHeight: 32, bodyWidth: 0,
-    measureTimers: [], measureRevision: 0,
+    measureTimers: [], measureRevision: 0, loadedHtml: '', preserveThemeHeight: false,
     controller: { loadData(...args) {
       if (config.loadError) throw new Error('local controller failure');
       loads.push(args);
@@ -413,4 +424,121 @@ test('a wider viewport resets the old height before delayed measurement can read
   f.config.pageHeight = 500; f.runTimer(Array.from(f.timers.keys())[0]);
   assert.equal(f.host.bodyHeight, 500);
   assert.equal(f.heightReads.length, count + 1);
+});
+
+test('a day/night theme transition preserves a valid open image and measured article height', () => {
+  const f = fixture(), body = '正文[img]' + IMAGE + '[/img]';
+  f.host.html = themedDocument(body, false); f.host.reloadHtml();
+  f.config.pageHeight = 880; f.callbacks.onPageEnd(); f.host.openImage(link(IMAGE));
+  const oldCallbacks = Array.from(f.timers.values(), timer => timer.callback), reads = f.heightReads.length;
+  const next = themedDocument(body, true); f.host.html = next; f.host.reloadHtml();
+  assert.equal(f.host.showImageViewer, true);
+  assert.equal(f.host.activeImageUrl, IMAGE);
+  assert.equal(f.host.bodyHeight, 880);
+  assert.equal(f.host.loadedHtml, next);
+  assert.equal(f.loads.at(-1)[0], next, 'Web content still reloads with the new colors');
+  assert.equal(f.timers.size, 0);
+  f.config.pageHeight = 32; oldCallbacks.forEach(callback => callback());
+  assert.equal(f.heightReads.length, reads);
+  assert.equal(f.host.bodyHeight, 880);
+  f.host.html = themedDocument(body, false); f.host.reloadHtml();
+  assert.equal(f.host.showImageViewer, true);
+  assert.equal(f.host.activeImageUrl, IMAGE);
+  assert.equal(f.host.bodyHeight, 880);
+});
+
+test('theme transitions still close a stale image URL while preserving article height', () => {
+  const f = fixture(), body = '正文[img]' + IMAGE + '[/img]';
+  f.host.html = themedDocument(body, false); f.host.reloadHtml();
+  f.host.bodyHeight = 600; f.host.activeImageUrl = 'https://absent.invalid/old.png';
+  f.host.showImageViewer = true; f.host.html = themedDocument(body, true); f.host.reloadHtml();
+  assert.equal(f.host.showImageViewer, false);
+  assert.equal(f.host.activeImageUrl, '');
+  assert.equal(f.host.bodyHeight, 600);
+});
+
+test('theme reload resource and completion events cannot collapse measured content before images decode', () => {
+  const f = fixture(), body = '正文[img]' + IMAGE + '[/img]';
+  f.host.html = themedDocument(body, false); f.host.reloadHtml();
+  f.config.pageHeight = 880; f.callbacks.onPageEnd(); f.host.openImage(link(IMAGE));
+  f.host.html = themedDocument(body, true); f.host.reloadHtml();
+  for (const event of [f.callbacks.onResourceLoad, f.callbacks.onPageEnd]) {
+    f.config.pageHeight = 32; event();
+    assert.equal(f.host.bodyHeight, 880);
+    for (const id of Array.from(f.timers.keys())) f.runTimer(id);
+    assert.equal(f.host.bodyHeight, 880);
+    assert.equal(f.host.showImageViewer, true);
+  }
+  f.config.pageHeight = 1200; f.callbacks.onResourceLoad();
+  assert.equal(f.host.bodyHeight, 1200, 'A late image may still need additional room');
+  f.config.pageHeight = 32; f.runTimer(Array.from(f.timers.keys())[0]);
+  assert.equal(f.host.bodyHeight, 1200, 'Later incomplete measurements preserve valid image growth');
+  f.config.pageHeight = 1000000; f.callbacks.onPageEnd();
+  assert.equal(f.host.bodyHeight, 2000, 'Preserved heights still respect the physical surface cap');
+});
+
+test('content, font and width changes after a theme reload permit a correctly smaller measured height', () => {
+  const body = '正文[img]' + IMAGE + '[/img]';
+  for (const change of [f => {
+    f.host.html = themedDocument('更短正文', true); f.host.reloadHtml();
+  }, f => {
+    f.host.html = themedDocument(body, true).replace('font-size:16px', 'font-size:12px');
+    f.host.reloadHtml();
+  }, f => {
+    f.callbacks.onAreaChange({ width: 320, height: 900 }, { width: 640, height: 900 });
+  }]) {
+    const f = fixture(); f.host.html = themedDocument(body, false); f.host.reloadHtml();
+    f.config.pageHeight = 900; f.callbacks.onPageEnd();
+    f.host.html = themedDocument(body, true); f.host.reloadHtml();
+    assert.equal(f.host.bodyHeight, 900);
+    change(f);
+    assert.equal(f.host.bodyHeight, 32);
+    f.config.pageHeight = 240; f.callbacks.onPageEnd();
+    assert.equal(f.host.bodyHeight, 240);
+    f.config.pageHeight = 180; f.callbacks.onResourceLoad();
+    assert.equal(f.host.bodyHeight, 180, 'Ordinary measurements can recover in either direction');
+  }
+});
+
+test('actual article or layout changes retain the reset path even when the current image remains', () => {
+  const body = '正文[img]' + IMAGE + '[/img]';
+  for (const replacement of [themedDocument('新' + body, true),
+    themedDocument(body, true).replace('font-size:16px', 'font-size:20px')]) {
+    const f = fixture(); f.host.html = themedDocument(body, false); f.host.reloadHtml();
+    f.host.bodyHeight = 900; f.host.openImage(link(IMAGE));
+    f.host.html = replacement; f.host.reloadHtml();
+    assert.equal(f.host.showImageViewer, false);
+    assert.equal(f.host.activeImageUrl, '');
+    assert.equal(f.host.bodyHeight, 32);
+    assert.equal(f.loads.at(-1)[0], replacement);
+  }
+});
+
+test('a color-only transition keeps a pending image save current and reports its completion', async () => {
+  const f = fixture(), body = '正文[img]' + IMAGE + '[/img]', result = defer();
+  f.host.html = themedDocument(body, false); f.host.reloadHtml();
+  f.host.openImage(link(IMAGE)); f.config.save = () => result.promise;
+  const operation = f.host.saveImage(IMAGE);
+  f.host.html = themedDocument(body, true); f.host.reloadHtml();
+  assert.equal(f.saves[0].isCurrent(), true);
+  assert.equal(f.host.showImageViewer, true);
+  result.resolve({ success: true, cancelled: false, message: '已保存到图库' }); await operation;
+  assert.equal(f.host.isSavingImage, false);
+  assert.deepEqual(f.toasts, [{ message: '已保存到图库' }]);
+});
+
+test('content replacement after a theme transition still invalidates a pending save and viewer', async () => {
+  const f = fixture(), body = '正文[img]' + IMAGE + '[/img]', result = defer();
+  f.host.html = themedDocument(body, false); f.host.reloadHtml();
+  f.host.openImage(link(IMAGE)); f.config.save = () => result.promise;
+  const operation = f.host.saveImage(IMAGE);
+  f.host.html = themedDocument(body, true); f.host.reloadHtml();
+  assert.equal(f.saves[0].isCurrent(), true);
+  f.host.html = themedDocument('完全不同的正文', true); f.host.reloadHtml();
+  assert.equal(f.saves[0].isCurrent(), false);
+  assert.equal(f.host.showImageViewer, false);
+  assert.equal(f.host.activeImageUrl, '');
+  assert.equal(f.host.bodyHeight, 32);
+  result.resolve({ success: true, cancelled: false, message: '旧图片保存结果' }); await operation;
+  assert.equal(f.toasts.length, 0);
 });

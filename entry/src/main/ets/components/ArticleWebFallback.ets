@@ -11,6 +11,7 @@ export struct ArticleWebFallback {
   @Prop @Watch('onTargetChanged') tid: number = 0;
   @Prop @Watch('onTargetChanged') page: number = 1;
   @Prop nightMode: boolean = false;
+  @Prop @Watch('onBottomInsetChanged') bottomSafeAreaInset: number = 0;
   @State private webLoading: boolean = true;
   @State private webFailureMessage: string = '';
   @State private navigationNotice: string = '';
@@ -22,6 +23,7 @@ export struct ArticleWebFallback {
   private initialTopicStarted: boolean = false;
   private selectedDomain: string = '';
   private currentWebPage: number = 1;
+  private webViewportWidth: number = 0;
   private loadTimeout: number = -1;
 
   aboutToAppear(): void {
@@ -48,6 +50,49 @@ export struct ArticleWebFallback {
   private onTargetChanged(): void {
     if (this.readerActive && this.controllerAttached && this.initialTopicStarted) {
       this.loadCurrentTopic();
+    }
+  }
+
+  private onBottomInsetChanged(): void {
+    this.updateBottomDocumentInset();
+  }
+
+  private onWebViewportChanged(current: Area): void {
+    const currentWidth: number = Number(current.width);
+    if (!Number.isFinite(currentWidth) || currentWidth <= 0 || currentWidth === this.webViewportWidth) {
+      return;
+    }
+    this.webViewportWidth = currentWidth;
+    this.updateBottomDocumentInset();
+  }
+
+  private async updateBottomDocumentInset(): Promise<void> {
+    if (!this.readerActive || !this.controllerAttached || this.webLoading ||
+      this.webFailureMessage.length > 0 || !Number.isFinite(this.webViewportWidth) ||
+      this.webViewportWidth <= 0 || !Number.isFinite(this.bottomSafeAreaInset) || this.bottomSafeAreaInset < 0) {
+      return;
+    }
+    try {
+      const currentUrl: string = this.readerController.getUrl();
+      if (!this.isCurrentTopicUrl(currentUrl)) {
+        return;
+      }
+      // Keep the viewport immersive. Only its scrollable document tail avoids the indicator.
+      // ArkWeb pages can have a desktop-width viewport, so translate vp through CSS viewport width.
+      const script: string = '(() => { if (window.location.href !== ' + JSON.stringify(currentUrl) +
+        ' || !document.body || !Number.isFinite(window.innerWidth) || window.innerWidth <= 0) return;' +
+        'const id="nga-harmony-gesture-end-spacer";let tail=document.getElementById(id);' +
+        'if(!tail){tail=document.createElement("div");tail.id=id;}' +
+        'tail.setAttribute("aria-hidden","true");' +
+        'const height=Math.ceil(' + this.bottomSafeAreaInset.toString() + '*window.innerWidth/' +
+        this.webViewportWidth.toString() + ');' +
+        'tail.style.cssText="display:block;box-sizing:border-box;width:100%;height:"+height+' +
+        '"px;min-height:"+height+"px;max-height:none;flex-shrink:0;clear:both;' +
+        'margin:0;padding:0;border:0;pointer-events:none;";' +
+        'document.body.appendChild(tail); })();';
+      await this.readerController.runJavaScript(script);
+    } catch (error) {
+      // A closing/navigating Web controller must not interrupt otherwise readable content.
     }
   }
 
@@ -207,6 +252,7 @@ export struct ArticleWebFallback {
       this.currentWebPage = this.pageFromValidatedUrl(event.url);
       this.clearLoadTimeout();
       this.webLoading = false;
+      this.updateBottomDocumentInset();
     }
   }
 
@@ -215,6 +261,7 @@ export struct ArticleWebFallback {
     if (this.readerActive && details.isMainFrame && details.isSameDocument &&
       this.isCurrentTopicUrl(details.url)) {
       this.currentWebPage = this.pageFromValidatedUrl(details.url);
+      this.updateBottomDocumentInset();
     }
   }
 
@@ -296,6 +343,7 @@ export struct ArticleWebFallback {
           .id('article-web-fallback-' + this.tid.toString())
           .width('100%')
           .height('100%')
+          .onAreaChange((_previous: Area, current: Area): void => this.onWebViewportChanged(current))
           .backgroundColor(this.nightMode ? COLOR_NIGHT_BG : COLOR_DAY_BG)
           .javaScriptAccess(true)
           .domStorageAccess(false)

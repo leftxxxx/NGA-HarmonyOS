@@ -11,5 +11,6 @@ export class ThreadPageInfo {
   subject: string = '';
   lastPoster: string = '';
   postDate: number = 0;
+  recommend: number = 0;
   page: number = 1;
 }

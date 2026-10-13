@@ -12,7 +12,7 @@ import {
   COLOR_DAY_TEXT, COLOR_NIGHT_TEXT, COLOR_DAY_SUB, COLOR_NIGHT_SUB,
   themeAccentTextColor, themeErrorTextColor, themeWarningTextColor
 } from '../model/AppTheme';
-import { SettingsStore, SettingKeys, SettingDefaults } from '../model/AppSettings';
+import { SettingsStore, SettingKeys, SettingDefaults, NIGHT_MODE_STORAGE_KEY } from '../model/AppSettings';
 import { LoginStore } from '../model/LoginStore';
 import { HttpClient } from '../model/HttpClient';
 import { UrlBuilder } from '../model/UrlBuilder';
@@ -23,7 +23,8 @@ import { AvatarUtils } from '../model/AvatarUtils';
 @Entry
 @Component
 struct UserProfilePage {
-  @State nightMode: boolean = SettingDefaults.NIGHT;
+  @StorageLink(NIGHT_MODE_STORAGE_KEY) nightMode: boolean = SettingDefaults.NIGHT;
+  @State private bottomSafeAreaInset: number = 0;
   @State themeIndex: number = SettingDefaults.THEME;
   @State uid: number = 0;
   @State isLoading: boolean = false;
@@ -35,7 +36,6 @@ struct UserProfilePage {
   aboutToAppear(): void {
     SettingsStore.init(this.ctx);
     LoginStore.init(this.ctx);
-    this.nightMode = SettingsStore.getBool(SettingKeys.NIGHT, SettingDefaults.NIGHT);
     this.themeIndex = SettingsStore.getInt(SettingKeys.THEME, SettingDefaults.THEME);
 
     // 从路由参数获取用户 uid
@@ -107,14 +107,17 @@ struct UserProfilePage {
       AppSubPage({
         pageTitle: this.profile.username.length > 0 ? this.profile.username : '用户主页',
         nightMode: this.nightMode,
-        pageBackground: this.pageBg()
+        pageBackground: this.pageBg(),
+        onBottomInsetChanged: (inset: number): void => { this.bottomSafeAreaInset = inset; }
       }) {
         this.PageContent()
       }
     }
     .width('100%')
-    .height('100%')
+    .height(LayoutPolicy.matchParent)
     .backgroundColor(this.pageBg())
+    .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.BOTTOM])
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 
   @Builder
@@ -183,7 +186,7 @@ struct UserProfilePage {
         }
       }
       .width('100%')
-      .padding({ bottom: 16 })
+      .padding({ bottom: 16 + this.bottomSafeAreaInset })
     }
     .width('100%')
     .layoutWeight(1)

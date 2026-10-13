@@ -274,14 +274,13 @@ export struct ArticleImageViewer {
       Text(this.isSaving ? '正在保存图片…' : '双指缩放 · 双击放大 · 长按保存')
         .fontSize(12)
         .fontColor(this.secondaryColor())
-        .padding({ top: 12, bottom: 16 })
+        .padding({ top: 12, bottom: 16 + this.safeInsetBottom })
         .visibility(this.safeAreaReady ? Visibility.Visible : Visibility.Hidden)
     }
     .id('article-image-viewer')
     .width('100%')
     .height('100%')
-    .padding({ top: this.safeInsetTop, bottom: this.safeInsetBottom,
-      left: this.safeInsetLeft, right: this.safeInsetRight })
+    .padding({ top: this.safeInsetTop, left: this.safeInsetLeft, right: this.safeInsetRight })
     .backgroundColor(this.viewerBackground)
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
   }

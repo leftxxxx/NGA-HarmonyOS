@@ -12,13 +12,13 @@ import {
   COLOR_ACCENT_BLUE,
   COLOR_DAY_BG, COLOR_NIGHT_BG,
   COLOR_DAY_TEXT, COLOR_NIGHT_TEXT, COLOR_DAY_SUB, COLOR_NIGHT_SUB, themeAccentTextColor,
-  themeErrorTextColor
+  themeErrorTextColor, WINDOW_TOP_SAFE_AREA_PX_KEY
 } from '../model/AppTheme';
 import { ArticleBody } from '../components/ArticleBody';
 import { ArticleWebFallback } from '../components/ArticleWebFallback';
 import { TopicActionMaterialModifier, topicTitleOptions, topicSurfaceColor,
   topicSecondarySurfaceColor, topicDividerColor } from '../components/TopicUiStyle';
-import { SettingsStore, SettingKeys, SettingDefaults } from '../model/AppSettings';
+import { SettingsStore, SettingKeys, SettingDefaults, NIGHT_MODE_STORAGE_KEY } from '../model/AppSettings';
 import { LoginStore } from '../model/LoginStore';
 import { HttpClient, PostFieldMap } from '../model/HttpClient';
 import { UrlBuilder } from '../model/UrlBuilder';
@@ -34,7 +34,8 @@ const PAGE_SIZE: number = 20;
 @Entry
 @Component
 struct ArticleListPage {
-  @State nightMode: boolean = SettingDefaults.NIGHT;
+  @StorageLink(WINDOW_TOP_SAFE_AREA_PX_KEY) private topSafeAreaPx: number = 0;
+  @StorageLink(NIGHT_MODE_STORAGE_KEY) nightMode: boolean = SettingDefaults.NIGHT;
   @State themeIndex: number = SettingDefaults.THEME;
   @State tid: number = 0;
   @State title: string = '';
@@ -55,6 +56,8 @@ struct ArticleListPage {
   @State isFavorited: boolean = false;
   @State actionMsg: string = '';
   @State voteFeedback: Map<string, string> = new Map<string, string>();
+  @State private selectedVotes: Map<string, number> = new Map<string, number>();
+  @State private voteAccountUid: string = '';
   @State isPerformingAction: boolean = false;
   @State fid: number = 0;
   @State loadCache: boolean = false;
@@ -67,7 +70,6 @@ struct ArticleListPage {
   @State pageInput: string = '';
   @State pageInputError: string = '';
   @State bottomSafeAreaInset: number = 0;
-  @State bottomSafeAreaReady: boolean = false;
 
   private ctx: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
   private readerStack: NavPathStack = new NavPathStack();
@@ -95,8 +97,8 @@ struct ArticleListPage {
     this.observeBottomSafeArea();
     SettingsStore.init(this.ctx);
     LoginStore.init(this.ctx);
+    this.syncVoteAccount();
     ArticleCacheStore.init(this.ctx);
-    this.nightMode = SettingsStore.getBool(SettingKeys.NIGHT, SettingDefaults.NIGHT);
     this.themeIndex = SettingsStore.getInt(SettingKeys.THEME, SettingDefaults.THEME);
 
     let initialPage: number = 1;
@@ -134,6 +136,7 @@ struct ArticleListPage {
   }
 
   onPageShow(): void {
+    this.syncVoteAccount();
     this.currentPageCached = ArticleCacheStore.hasCachePage(this.tid, this.currentPage);
     if (this.readerWindow !== undefined) {
       this.updateBottomSafeArea();
@@ -187,7 +190,6 @@ struct ArticleListPage {
         .getWindowAvoidArea(window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR);
       this.bottomSafeAreaInset = this.getUIContext()
         .px2vp(Math.max(systemArea.bottomRect.height, navigationArea.bottomRect.height));
-      this.bottomSafeAreaReady = true;
     } catch (error) {
       // 窗口切换期间保留上次有效间距。
     }
@@ -492,6 +494,9 @@ struct ArticleListPage {
     const targetTid: number = row.tid;
     const targetPid: number = row.pid;
     const targetLabel: string = this.postTargetLabel(row);
+    this.syncVoteAccount();
+    const targetAccountUid: string = this.voteAccountUid;
+    const voteStateKey: string = targetAccountUid + ':' + feedbackKey;
     const actionLabel: string = value === 1 ? '支持' : '反对';
     this.isPerformingAction = true;
     this.voteFeedback.set(feedbackKey, '正在' + actionLabel + targetLabel + '…');
@@ -507,6 +512,15 @@ struct ArticleListPage {
       fields['pid'] = targetPid.toString();
 
       const result = await HttpClient.post(url, fields, true);
+      if (!this.readerMounted) {
+        return;
+      }
+      if (result.success) {
+        const confirmedDirection: number | undefined = NgaJsonParser.parsePostVoteDirection(result.body, value);
+        if (targetAccountUid.length > 0 && confirmedDirection !== undefined) {
+          this.selectedVotes.set(voteStateKey, confirmedDirection);
+        }
+      }
       this.voteFeedback.set(feedbackKey, result.success ?
         this.formatVoteResult(result.body, targetLabel, value) :
         targetLabel + '：' + actionLabel + '失败，请稍后重试');
@@ -542,6 +556,23 @@ struct ArticleListPage {
 
   private voteMessage(row: ThreadRowInfo): string {
     return this.voteFeedback.get(this.postKey(row)) ?? '';
+  }
+
+  private syncVoteAccount(): void {
+    this.voteAccountUid = LoginStore.getUser().uid;
+  }
+
+  private isVoteSelected(row: ThreadRowInfo, direction: number): boolean {
+    return (direction === 1 || direction === -1) &&
+      (this.selectedVotes.get(this.voteAccountUid + ':' + this.postKey(row)) ?? 0) === direction;
+  }
+
+  private voteIconColor(row: ThreadRowInfo, direction: number): string {
+    return this.isVoteSelected(row, direction) ? this.accentTextColor() : this.subTextColor();
+  }
+
+  private voteButtonBackground(row: ThreadRowInfo, direction: number): ResourceColor {
+    return this.isVoteSelected(row, direction) ? topicSecondarySurfaceColor(this.nightMode) : Color.Transparent;
   }
 
   /**
@@ -1051,30 +1082,29 @@ struct ArticleListPage {
       }
 
       Row({ space: 8 }) {
-        Button({ type: ButtonType.Capsule }) {
-          Row({ space: 5 }) {
-            SymbolGlyph($r('sys.symbol.hand_thumbsup'))
-              .fontSize(16)
-              .fontColor([this.subTextColor()])
-            Text('支持').fontSize(12).fontColor(this.subTextColor())
-          }
+        Button({ type: ButtonType.Circle }) {
+          SymbolGlyph($r('sys.symbol.hand_thumbsup'))
+            .fontSize(16)
+            .fontColor([this.voteIconColor(row, 1)])
         }
+        .width(36)
         .height(36)
-        .padding({ left: 10, right: 10 })
-        .backgroundColor(Color.Transparent)
+        .backgroundColor(this.voteButtonBackground(row, 1))
         .accessibilityText('支持' + this.postTargetLabel(row))
+        .accessibilitySelected(this.isVoteSelected(row, 1))
         .enabled(!this.isPerformingAction && !this.isLoading)
         .onClick(() => { this.likePost(row, 1); })
 
         Button({ type: ButtonType.Circle }) {
           SymbolGlyph($r('sys.symbol.hand_thumbsdown'))
             .fontSize(16)
-            .fontColor([this.subTextColor()])
+            .fontColor([this.voteIconColor(row, -1)])
         }
         .width(36)
         .height(36)
-        .backgroundColor(Color.Transparent)
+        .backgroundColor(this.voteButtonBackground(row, -1))
         .accessibilityText('反对' + this.postTargetLabel(row))
+        .accessibilitySelected(this.isVoteSelected(row, -1))
         .enabled(!this.isPerformingAction && !this.isLoading)
         .onClick(() => { this.likePost(row, -1); })
 
@@ -1325,13 +1355,14 @@ struct ArticleListPage {
       if (this.webFallbackPage > 0) {
         Column() {
           ArticleWebFallback({ tid: this.tid, page: this.webFallbackPage, nightMode: this.nightMode,
+            bottomSafeAreaInset: this.bottomSafeAreaInset,
             onRetryNative: (page: number): void => this.retryNativeReading(page) })
             .width('100%')
             .layoutWeight(1)
         }
         .width('100%')
         .height('100%')
-        .padding({ top: 64, bottom: this.bottomSafeAreaInset })
+        .padding({ top: 64 })
         .backgroundColor(this.pageBg())
       } else {
       // HarmonyOS 7 的操作材质在横向底部 TabBar 内生效。
@@ -1390,8 +1421,7 @@ struct ArticleListPage {
       }
     }
     // 仅扩展底部正文布局，顶部继续由原生标题栏避让。
-    .ignoreLayoutSafeArea(this.bottomSafeAreaReady ? [LayoutSafeAreaType.SYSTEM] : [],
-      this.bottomSafeAreaReady ? [LayoutSafeAreaEdge.BOTTOM] : [])
+    .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.BOTTOM])
     .title('话题详情', topicTitleOptions(this.nightMode))
     .hideBackButton(false)
     .hideToolBar(true)
@@ -1403,20 +1433,28 @@ struct ArticleListPage {
   }
 
   build() {
-    Navigation(this.readerStack) {
+    Column() {
+      Navigation(this.readerStack) {
+      }
+      .width('100%')
+      .height(LayoutPolicy.matchParent)
+      .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.BOTTOM])
+      .mode(NavigationMode.Stack)
+      .hideTitleBar(true)
+      .navDestination(this.ReaderDestination)
+      .backgroundColor(this.pageBg())
+      .onAppear(() => {
+        if (this.readerStack.size() === 0) {
+          this.readerStack.pushPath({ name: 'ArticleReader' }, { animated: false });
+        }
+      })
     }
     .width('100%')
-    .height('100%')
-    .mode(NavigationMode.Stack)
-    .hideTitleBar(true)
-    .navDestination(this.ReaderDestination)
+    .height(LayoutPolicy.matchParent)
+    .padding({ top: this.getUIContext().px2vp(this.topSafeAreaPx) })
+    .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.BOTTOM])
     .backgroundColor(this.pageBg())
     // 页面延伸到底部，操作栏独立避让系统手势区。
-    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
-    .onAppear(() => {
-      if (this.readerStack.size() === 0) {
-        this.readerStack.pushPath({ name: 'ArticleReader' }, { animated: false });
-      }
-    })
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 }

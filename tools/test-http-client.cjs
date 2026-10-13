@@ -1,6 +1,6 @@
 'use strict';
 
-// Run: node --test tools/test-http-client.cjs
+// Run: D:\NGA\tools\node-v22.23.3-win-x64\node.exe --test tools/test-http-client.cjs
 // Exercise the actual ETS sources. Only HarmonyOS native APIs and persisted stores
 // are replaced; parsing, response handling, form encoding, and URL building remain real.
 const assert = require('node:assert/strict');

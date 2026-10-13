@@ -15,7 +15,7 @@ import {
   COLOR_DAY_TEXT, COLOR_NIGHT_TEXT, COLOR_DAY_SUB, COLOR_NIGHT_SUB,
   themeAccentTextColor, themeSecondarySurfaceColor, themeDividerColor
 } from '../model/AppTheme';
-import { SettingsStore, SettingKeys, SettingDefaults } from '../model/AppSettings';
+import { SettingsStore, SettingKeys, SettingDefaults, NIGHT_MODE_STORAGE_KEY } from '../model/AppSettings';
 import { LoginStore } from '../model/LoginStore';
 import { HttpClient } from '../model/HttpClient';
 import { UrlBuilder } from '../model/UrlBuilder';
@@ -28,7 +28,8 @@ import { BoardSearchResult } from '../model/SearchResult';
 @Entry
 @Component
 struct SearchPage {
-  @State nightMode: boolean = SettingDefaults.NIGHT;
+  @StorageLink(NIGHT_MODE_STORAGE_KEY) nightMode: boolean = SettingDefaults.NIGHT;
+  @State private bottomSafeAreaInset: number = 0;
   @State themeIndex: number = SettingDefaults.THEME;
   @State currentTab: number = 0; // 0=主题搜索, 1=板块搜索
   @State keyword: string = '';
@@ -46,7 +47,6 @@ struct SearchPage {
   aboutToAppear(): void {
     SettingsStore.init(this.ctx);
     LoginStore.init(this.ctx);
-    this.nightMode = SettingsStore.getBool(SettingKeys.NIGHT, SettingDefaults.NIGHT);
     this.themeIndex = SettingsStore.getInt(SettingKeys.THEME, SettingDefaults.THEME);
   }
 
@@ -198,13 +198,16 @@ struct SearchPage {
 
   build() {
     Column() {
-      AppSubPage({ pageTitle: '搜索', nightMode: this.nightMode, pageBackground: this.pageBg() }) {
+      AppSubPage({ pageTitle: '搜索', nightMode: this.nightMode, pageBackground: this.pageBg(),
+        onBottomInsetChanged: (inset: number): void => { this.bottomSafeAreaInset = inset; } }) {
         this.PageContent()
       }
     }
     .width('100%')
-    .height('100%')
+    .height(LayoutPolicy.matchParent)
     .backgroundColor(this.pageBg())
+    .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.BOTTOM])
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 
   @Builder
@@ -397,6 +400,7 @@ struct SearchPage {
     .width('100%')
     .layoutWeight(1)
     .divider({ strokeWidth: 1, color: themeDividerColor(this.nightMode) })
+    .contentEndOffset(12 + this.bottomSafeAreaInset)
     .onReachEnd(() => {
       this.onLoadMore();
     })
@@ -445,6 +449,7 @@ struct SearchPage {
     .width('100%')
     .layoutWeight(1)
     .divider({ strokeWidth: 1, color: themeDividerColor(this.nightMode) })
+    .contentEndOffset(12 + this.bottomSafeAreaInset)
   }
 
   @Builder

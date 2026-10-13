@@ -1,6 +1,9 @@
 import { common, ConfigurationConstant } from '@kit.AbilityKit';
 import { window } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { SettingsStore, NightModePolicy } from './AppSettings';
+
+export const WINDOW_TOP_SAFE_AREA_PX_KEY: string = 'nga_window_top_safe_area_px';
 
 export const COLOR_ACCENT_BLUE: string = '#ff1765c1';
 export const COLOR_NIGHT_ACCENT_TEXT: string = '#ff8dbeff';
@@ -55,11 +58,17 @@ export function themeAccentTextColor(nightMode: boolean): string {
   return nightMode ? COLOR_NIGHT_ACCENT_TEXT : COLOR_ACCENT_BLUE;
 }
 
-/** 同步原生控件和安全区域的底色，随应用的夜间开关更新。 */
+/** 内容加载成功后应用系统/手动策略，页面切换不重复覆盖系统设置。 */
+export function applyApplicationColorMode(context: common.UIAbilityContext): void {
+  const policy: NightModePolicy = SettingsStore.getNightModePolicy();
+  context.getApplicationContext().setColorMode(policy === NightModePolicy.SYSTEM ?
+    ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET : (policy === NightModePolicy.DARK ?
+    ConfigurationConstant.ColorMode.COLOR_MODE_DARK : ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT));
+}
+
+/** 同步窗口和系统栏底色，实际色模式由共享状态决定。 */
 export async function applyWindowTheme(context: common.UIAbilityContext, nightMode: boolean): Promise<void> {
   try {
-    context.getApplicationContext().setColorMode(nightMode ?
-      ConfigurationConstant.ColorMode.COLOR_MODE_DARK : ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT);
     const mainWindow: window.Window = await window.getLastWindow(context);
     const background: string = nightMode ? COLOR_NIGHT_BG : COLOR_DAY_BG;
     const foreground: string = nightMode ? COLOR_NIGHT_TEXT : COLOR_DAY_TEXT;

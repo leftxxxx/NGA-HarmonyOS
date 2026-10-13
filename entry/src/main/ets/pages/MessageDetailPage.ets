@@ -8,7 +8,7 @@ import {
   COLOR_DAY_TEXT, COLOR_NIGHT_TEXT, COLOR_DAY_SUB, COLOR_NIGHT_SUB,
   applyWindowTheme, themeAccentTextColor, themeSecondarySurfaceColor
 } from '../model/AppTheme';
-import { SettingsStore, SettingKeys, SettingDefaults } from '../model/AppSettings';
+import { SettingsStore, SettingKeys, SettingDefaults, NIGHT_MODE_STORAGE_KEY } from '../model/AppSettings';
 import { LoginStore } from '../model/LoginStore';
 import { HttpClient } from '../model/HttpClient';
 import { UrlBuilder } from '../model/UrlBuilder';
@@ -22,7 +22,8 @@ import { renderArticleContent } from '../model/ArticleHtml';
 @Entry
 @Component
 struct MessageDetailPage {
-  @State nightMode: boolean = SettingDefaults.NIGHT;
+  @StorageLink(NIGHT_MODE_STORAGE_KEY) nightMode: boolean = SettingDefaults.NIGHT;
+  @State private bottomSafeAreaInset: number = 0;
   @State mid: number = 0;
   @State subject: string = '';
   @State postList: NgaMessagePost[] = [];
@@ -84,7 +85,6 @@ struct MessageDetailPage {
     if (this.ctx === undefined || !this.mounted) {
       return;
     }
-    this.nightMode = SettingsStore.getBool(SettingKeys.NIGHT, SettingDefaults.NIGHT);
     applyWindowTheme(this.ctx, this.nightMode);
     const accountKey: string = LoginStore.getUser().uid;
     if (accountKey !== this.activeAccountKey || !LoginStore.hasUser()) {
@@ -630,7 +630,7 @@ struct MessageDetailPage {
           .enabled(!this.isSending && !this.isRefreshing).onClick(() => this.startReply())
       }
     }
-    .width('100%').padding({ left: 16, right: 16, top: 10, bottom: 12 })
+    .width('100%').padding({ left: 16, right: 16, top: 10, bottom: 12 + this.bottomSafeAreaInset })
     .backgroundColor(this.pageBg()).alignItems(HorizontalAlign.Start)
   }
 
@@ -666,10 +666,15 @@ struct MessageDetailPage {
   build() {
     Column() {
       AppSubPage({ pageTitle: '短消息', nightMode: this.nightMode, pageBackground: this.pageBg(),
+        onBottomInsetChanged: (inset: number): void => { this.bottomSafeAreaInset = inset; },
         onNavigateBack: () => { this.navigateBack(); } }) {
         this.PageContent()
       }
     }
-    .width('100%').height('100%').backgroundColor(this.pageBg())
+    .width('100%')
+    .height(LayoutPolicy.matchParent)
+    .backgroundColor(this.pageBg())
+    .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.BOTTOM])
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 }

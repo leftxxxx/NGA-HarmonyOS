@@ -28,7 +28,7 @@ import { AppSubPage } from '../components/AppSubPage';
 import web_webview from '@ohos.web.webview';
 import { LoginStore, UserIdentity } from '../model/LoginStore';
 import { LoginService, FormLoginResult, WEB_LOGIN_URL, WEB_COOKIE_DOMAIN } from '../model/LoginService';
-import { SettingsStore, SettingKeys, SettingDefaults } from '../model/AppSettings';
+import { SettingsStore, SettingKeys, SettingDefaults, NIGHT_MODE_STORAGE_KEY } from '../model/AppSettings';
 import {
   COLOR_ACCENT_BLUE,
   COLOR_DAY_BG, COLOR_NIGHT_BG, COLOR_DAY_CARD, COLOR_NIGHT_CARD,
@@ -48,7 +48,8 @@ const LOGIN_SUCCESS_BACK_DELAY: number = 1200;
 @Entry
 @Component
 struct LoginPage {
-  @State nightMode: boolean = SettingDefaults.NIGHT;
+  @StorageLink(NIGHT_MODE_STORAGE_KEY) nightMode: boolean = SettingDefaults.NIGHT;
+  @State private bottomSafeAreaInset: number = 0;
   @State themeIndex: number = SettingDefaults.THEME;
   /* 登录方式：0 = WebView，1 = 账号密码表单 */
   @State loginMode: number = 0;
@@ -89,7 +90,6 @@ struct LoginPage {
   aboutToAppear(): void {
     LoginStore.init(this.ctx);
     SettingsStore.init(this.ctx);
-    this.nightMode = SettingsStore.getBool(SettingKeys.NIGHT, SettingDefaults.NIGHT);
     this.themeIndex = SettingsStore.getInt(SettingKeys.THEME, SettingDefaults.THEME);
     this.loggedIn = LoginStore.hasUser();
     if (this.loggedIn) {
@@ -350,6 +350,7 @@ struct LoginPage {
         pageTitle: $r('app.string.login'),
         nightMode: this.nightMode,
         pageBackground: this.pageBg(),
+        onBottomInsetChanged: (inset: number): void => { this.bottomSafeAreaInset = inset; },
         onNavigateBack: () => {
           if (!this.onBackPress()) {
             this.handleReturn();
@@ -360,8 +361,10 @@ struct LoginPage {
       }
     }
     .width('100%')
-    .height('100%')
+    .height(LayoutPolicy.matchParent)
     .backgroundColor(this.pageBg())
+    .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.BOTTOM])
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 
   @Builder
@@ -533,7 +536,7 @@ struct LoginPage {
           .fontColor(this.accentTextColor())
           .width('100%')
           .textAlign(TextAlign.Center)
-          .padding({ top: 14, bottom: 14 })
+          .padding({ top: 14, bottom: 14 + this.bottomSafeAreaInset })
       }
       .width('100%')
       .backgroundColor(this.cardBg())
@@ -672,7 +675,7 @@ struct LoginPage {
 
         Column() {
         }
-        .height(24)
+        .height(24 + this.bottomSafeAreaInset)
       }
       .width('100%')
       .padding({ left: 20, right: 20 })

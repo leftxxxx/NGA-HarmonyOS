@@ -18,13 +18,13 @@ import {
   themeDividerColor, themeSecondarySurfaceColor, themeErrorTextColor
 } from '../model/AppTheme';
 import { BlacklistStore, BlacklistUser } from '../model/BlacklistStore';
-import { SettingsStore, SettingKeys, SettingDefaults } from '../model/AppSettings';
+import { SettingsStore, SettingKeys, SettingDefaults, NIGHT_MODE_STORAGE_KEY } from '../model/AppSettings';
 
 /* 清空黑名单确认对话框 */
 @CustomDialog
 struct ClearBlacklistDialog {
   controller: CustomDialogController;
-  nightMode: boolean = false;
+  @StorageLink(NIGHT_MODE_STORAGE_KEY) nightMode: boolean = false;
   onConfirm: () => void = () => {};
 
   build() {
@@ -76,13 +76,13 @@ struct ClearBlacklistDialog {
 @Component
 struct BlacklistPage {
   @State blacklist: BlacklistUser[] = [];
-  @State nightMode: boolean = SettingDefaults.NIGHT;
+  @StorageLink(NIGHT_MODE_STORAGE_KEY) nightMode: boolean = SettingDefaults.NIGHT;
+  @State private bottomSafeAreaInset: number = 0;
   @State themeIndex: number = SettingDefaults.THEME;
 
   private ctx: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
   private clearDialogController: CustomDialogController = new CustomDialogController({
     builder: ClearBlacklistDialog({
-      nightMode: this.nightMode,
       onConfirm: () => { this.clearAll(); }
     }),
     autoCancel: true,
@@ -92,7 +92,6 @@ struct BlacklistPage {
 
   aboutToAppear(): void {
     SettingsStore.init(this.ctx);
-    this.nightMode = SettingsStore.getBool(SettingKeys.NIGHT, SettingDefaults.NIGHT);
     this.themeIndex = SettingsStore.getInt(SettingKeys.THEME, SettingDefaults.THEME);
     BlacklistStore.init(this.ctx);
     this.refreshList();
@@ -155,14 +154,17 @@ struct BlacklistPage {
         pageTitle: $r('app.string.settings_blacklist'),
         nightMode: this.nightMode,
         pageBackground: this.pageBg(),
+        onBottomInsetChanged: (inset: number): void => { this.bottomSafeAreaInset = inset; },
         menuItems: this.titleMenuItems()
       }) {
         this.PageContent()
       }
     }
     .width('100%')
-    .height('100%')
+    .height(LayoutPolicy.matchParent)
     .backgroundColor(this.pageBg())
+    .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.BOTTOM])
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 
   @Builder
@@ -206,6 +208,7 @@ struct BlacklistPage {
     .width('100%')
     .layoutWeight(1)
     .divider({ strokeWidth: 0.5, color: themeDividerColor(this.nightMode), startMargin: 16, endMargin: 16 })
+    .contentEndOffset(12 + this.bottomSafeAreaInset)
   }
 
   @Builder

@@ -21,7 +21,7 @@ import {
   COLOR_DAY_TEXT, COLOR_NIGHT_TEXT, COLOR_DAY_SUB, COLOR_NIGHT_SUB,
   applyWindowTheme, themeAccentTextColor, themeErrorTextColor, themeSecondarySurfaceColor
 } from '../model/AppTheme';
-import { SettingsStore, SettingKeys, SettingDefaults } from '../model/AppSettings';
+import { SettingsStore, SettingKeys, SettingDefaults, NIGHT_MODE_STORAGE_KEY } from '../model/AppSettings';
 import { LoginStore } from '../model/LoginStore';
 import { HttpClient } from '../model/HttpClient';
 import { UrlBuilder } from '../model/UrlBuilder';
@@ -37,7 +37,8 @@ import { TopicAttachmentUploader } from '../model/TopicAttachmentUploader';
 @Entry
 @Component
 struct ReplyPage {
-  @State nightMode: boolean = SettingDefaults.NIGHT;
+  @StorageLink(NIGHT_MODE_STORAGE_KEY) nightMode: boolean = SettingDefaults.NIGHT;
+  @State private bottomSafeAreaInset: number = 0;
   @State themeIndex: number = SettingDefaults.THEME;
   @State action: string = 'reply'; // reply | new | modify
   @State tid: number = 0;
@@ -84,7 +85,6 @@ struct ReplyPage {
     SettingsStore.init(this.ctx);
     LoginStore.init(this.ctx);
     this.activeAccountKey = LoginStore.getUser().uid;
-    this.nightMode = SettingsStore.getBool(SettingKeys.NIGHT, SettingDefaults.NIGHT);
     this.themeIndex = SettingsStore.getInt(SettingKeys.THEME, SettingDefaults.THEME);
 
     // 从路由参数获取帖子信息
@@ -167,7 +167,6 @@ struct ReplyPage {
 
   onPageShow(): void {
     if (!this.mounted) { return; }
-    this.nightMode = SettingsStore.getBool(SettingKeys.NIGHT, SettingDefaults.NIGHT);
     applyWindowTheme(this.ctx, this.nightMode);
     if (LoginStore.getUser().uid !== this.activeAccountKey || !LoginStore.hasUser()) {
       this.sendVersion++;
@@ -497,13 +496,16 @@ struct ReplyPage {
   build() {
     Column() {
       AppSubPage({ pageTitle: this.pageTitle(), nightMode: this.nightMode, pageBackground: this.pageBg(),
+        onBottomInsetChanged: (inset: number): void => { this.bottomSafeAreaInset = inset; },
         onNavigateBack: () => this.navigateBack() }) {
         this.PageContent()
       }
     }
     .width('100%')
-    .height('100%')
+    .height(LayoutPolicy.matchParent)
     .backgroundColor(this.pageBg())
+    .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.BOTTOM])
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 
   @Builder
@@ -617,7 +619,7 @@ struct ReplyPage {
           .enabled(this.canEdit())
           .onClick(() => this.submitPost())
       }
-      .width('100%').padding({ left: 16, right: 16, top: 16, bottom: 24 })
+      .width('100%').padding({ left: 16, right: 16, top: 16, bottom: 24 + this.bottomSafeAreaInset })
     }
     .width('100%').layoutWeight(1).align(Alignment.TopStart).scrollBar(BarState.Off)
   }

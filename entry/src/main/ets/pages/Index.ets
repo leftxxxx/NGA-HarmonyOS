@@ -3,24 +3,26 @@
  */
 
 import { common } from '@kit.AbilityKit';
-import { CommonModifier, uiMaterial, window } from '@kit.ArkUI';
+import { uiMaterial } from '@kit.ArkUI';
 import { deviceInfo } from '@kit.BasicServicesKit';
 import { NotificationContent } from '../components/NotificationContent';
 import {
   COLOR_ACCENT_BLUE,
   COLOR_DAY_BG, COLOR_NIGHT_BG, COLOR_DAY_CARD, COLOR_NIGHT_CARD,
   COLOR_DAY_TEXT, COLOR_NIGHT_TEXT, COLOR_DAY_SUB, COLOR_NIGHT_SUB, COLOR_DAY_ERROR,
-  applyWindowTheme, themeAccentTextColor, themeSecondarySurfaceColor, themeErrorTextColor
+  applyWindowTheme, themeAccentTextColor, themeSecondarySurfaceColor, themeErrorTextColor,
+  WINDOW_TOP_SAFE_AREA_PX_KEY, themeMaterialSurfaceColor
 } from '../model/AppTheme';
 import { topicTitleOptions } from '../components/TopicUiStyle';
 import { util } from '@kit.ArkTS';
-import { SettingsStore, SettingKeys, SettingDefaults } from '../model/AppSettings';
+import { SettingsStore, SettingKeys, SettingDefaults, NIGHT_MODE_STORAGE_KEY } from '../model/AppSettings';
 import { LoginStore } from '../model/LoginStore';
 import { UserManager } from '../model/UserManager';
 import { FavoriteStore } from '../model/FavoriteStore';
 import { RecentBoardStore } from '../model/RecentBoardStore';
 import { Board } from '../model/Board';
 import { UrlBuilder } from '../model/UrlBuilder';
+import { BottomSafeAreaObserver } from '../model/BottomSafeAreaObserver';
 
 /* 分类数据结构 */
 interface CategoryItem {
@@ -46,7 +48,7 @@ interface BoardItem {
 
 const HOME_FLOATING_BAR_HEIGHT: number = 56;
 const HOME_FLOATING_BAR_BOTTOM_MARGIN: number = 12;
-// 胶囊、底距与渐隐区共同决定列表末项需要的滚动留白。
+// 胶囊和底距共同决定列表末项需要的滚动留白，系统避让区另行动态累加。
 const HOME_FLOATING_CONTENT_INSET: number = HOME_FLOATING_BAR_HEIGHT + HOME_FLOATING_BAR_BOTTOM_MARGIN + 24;
 
 // 点分 API 版本需要 apiAvailable 判断；较早系统保留原生底栏。
@@ -71,25 +73,43 @@ class HomeBottomBarModifier implements AttributeModifier<TabsAttribute> {
   applyNormalAttribute(tabs: TabsAttribute): void {
     const background: string = this.nightMode ? COLOR_NIGHT_BG : COLOR_DAY_BG;
     tabs.barOverlap(true);
-    // 底栏、底部间隙和系统导航区共用不透明页面底色，避免材质与模糊造成色差。
-    tabs.barBackgroundColor(background);
-    tabs.barBackgroundBlurStyle(BlurStyle.NONE);
+    // 材质只作用于胶囊本体，小白条与底部间隙直接显示当前页内容。
+    tabs.barBackgroundColor(Color.Transparent);
+    tabs.safeAreaPadding({ bottom: 0 });
     if (deviceInfo.sdkApiVersion >= 26) {
       if (deviceInfo.apiAvailable('26.0.0')) {
+        let material: uiMaterial.ImmersiveMaterial | undefined = undefined;
+        try {
+          if (uiMaterial.isImmersiveMaterialSupported()) {
+            material = new uiMaterial.ImmersiveMaterial({
+              style: uiMaterial.ImmersiveStyle.THIN,
+              materialColor: themeMaterialSurfaceColor(this.nightMode, 0.6),
+              colorInvert: false,
+              applyShadow: true,
+              interactive: true,
+              lightEffect: { color: Color.White }
+            });
+          }
+        } catch (error) {
+          // 材质能力读取失败时保留可读的悬浮胶囊。
+        }
         tabs.barFloatingStyle({
           // 用原生尺寸档位控制长度，窄窗口仍按左右边距收缩。
           barWidth: { smallBarWidth: 320, mediumBarWidth: 360, largeBarWidth: 400 },
           barSideMargin: 28,
-          barBottomMargin: HOME_FLOATING_BAR_BOTTOM_MARGIN,
-          maskHeight: HOME_FLOATING_CONTENT_INSET,
-          maskColor: background,
-          // 不省略此项：原生悬浮栏省略材质时会自动启用沉浸光感。
-          systemMaterial: uiMaterial.Material.empty
+          barBottomMargin: HOME_FLOATING_BAR_BOTTOM_MARGIN + this.bottomSafeAreaInset,
+          maskHeight: 0,
+          maskColor: Color.Transparent,
+          systemMaterial: material !== undefined ? material : uiMaterial.Material.empty
         });
+        if (material === undefined) {
+          tabs.barBackgroundColor(background);
+          tabs.barBackgroundBlurStyle(BlurStyle.NONE);
+        }
         return;
       }
     }
-    tabs.safeAreaPadding({ bottom: this.bottomSafeAreaInset });
+    tabs.barBackgroundBlurStyle(BlurStyle.NONE);
   }
 }
 
@@ -100,7 +120,7 @@ struct AddBoardDialogView {
   @State addBoardName: string = '';
   @State addBoardFid: string = '';
   @State addBoardStid: string = '';
-  @Prop nightMode: boolean = false;
+  @StorageLink(NIGHT_MODE_STORAGE_KEY) nightMode: boolean = false;
   @Prop themeIndex: number = SettingDefaults.THEME;
   onConfirm: (name: string, fid: string, stid: string) => void = () => {};
 
@@ -212,7 +232,7 @@ struct AddBoardDialogView {
 @CustomDialog
 struct ClearFavoriteDialogView {
   controller: CustomDialogController;
-  @Prop nightMode: boolean = false;
+  @StorageLink(NIGHT_MODE_STORAGE_KEY) nightMode: boolean = false;
   onConfirm: () => void = () => {};
 
   build() {
@@ -263,12 +283,14 @@ struct ClearFavoriteDialogView {
 @Entry
 @Component
 struct Index {
-  @State nightMode: boolean = SettingDefaults.NIGHT;
+  @StorageLink(WINDOW_TOP_SAFE_AREA_PX_KEY) private topSafeAreaPx: number = 0;
+  @StorageLink(NIGHT_MODE_STORAGE_KEY) nightMode: boolean = SettingDefaults.NIGHT;
   @State themeIndex: number = SettingDefaults.THEME;
   @State categories: CategoryItem[] = [];
   @State currentMainTab: number = 0;
   @State homeVisible: boolean = true;
   @State bottomSafeAreaInset: number = 0;
+  @State bottomSafeAreaReady: boolean = false;
   @State currentCategoryIndex: number = 0;
   @State boardKeyword: string = '';
   @State loggedIn: boolean = false;
@@ -288,17 +310,9 @@ struct Index {
   private myScroller: Scroller = new Scroller();
   private categoryScrollers: Scroller[] = [];
   private floatingBottomBar: boolean = supportsFloatingBottomBar();
-  private homeWindow: window.Window | undefined = undefined;
-  private observingWindow: boolean = false;
-  private onBottomAvoidAreaChanged: (options: window.AvoidAreaOptions) => void =
-    (options: window.AvoidAreaOptions): void => {
-      if (options.type === window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR) {
-        this.bottomSafeAreaInset = this.getUIContext().px2vp(options.area.bottomRect.height);
-      }
-    };
+  private bottomSafeAreaObserver: BottomSafeAreaObserver = new BottomSafeAreaObserver();
   private addBoardDialogController: CustomDialogController = new CustomDialogController({
     builder: AddBoardDialogView({
-      nightMode: this.nightMode,
       themeIndex: this.themeIndex,
       onConfirm: (name: string, fid: string, stid: string) => {
         this.handleAddBoard(name, fid, stid);
@@ -310,7 +324,6 @@ struct Index {
   });
   private clearFavoriteDialogController: CustomDialogController = new CustomDialogController({
     builder: ClearFavoriteDialogView({
-      nightMode: this.nightMode,
       onConfirm: () => {
         this.confirmClearFavorites();
       }
@@ -321,10 +334,8 @@ struct Index {
   });
 
   aboutToAppear(): void {
-    this.observingWindow = true;
     this.observeBottomSafeArea();
     SettingsStore.init(this.ctx);
-    this.nightMode = SettingsStore.getBool(SettingKeys.NIGHT, SettingDefaults.NIGHT);
     this.themeIndex = SettingsStore.getInt(SettingKeys.THEME, SettingDefaults.THEME);
     this.currentCategoryIndex = SettingsStore.getInt('home_board_category', 0);
     LoginStore.init(this.ctx);
@@ -337,34 +348,25 @@ struct Index {
   }
 
   aboutToDisappear(): void {
-    this.observingWindow = false;
-    if (this.homeWindow !== undefined) {
-      this.homeWindow.off('avoidAreaChange', this.onBottomAvoidAreaChanged);
-      this.homeWindow = undefined;
-    }
+    this.bottomSafeAreaObserver.stop();
   }
 
-  private async observeBottomSafeArea(): Promise<void> {
-    try {
-      const homeWindow: window.Window = await window.getLastWindow(this.ctx);
-      if (!this.observingWindow) {
-        return;
-      }
-      this.homeWindow = homeWindow;
-      this.bottomSafeAreaInset = this.getUIContext().px2vp(homeWindow
-        .getWindowAvoidArea(window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR).bottomRect.height);
-      homeWindow.on('avoidAreaChange', this.onBottomAvoidAreaChanged);
-    } catch (error) {
-      this.bottomSafeAreaInset = 0;
-    }
+  private observeBottomSafeArea(): void {
+    this.bottomSafeAreaObserver.start(this.getUIContext(), (inset: number): void => {
+      this.bottomSafeAreaInset = inset;
+      this.bottomSafeAreaReady = true;
+    });
   }
 
   onPageShow(): void {
     this.homeVisible = true;
+    this.bottomSafeAreaObserver.refresh();
+    if (!this.bottomSafeAreaReady) {
+      this.observeBottomSafeArea();
+    }
     this.loadFavorites();
     this.loadRecentBoards();
     this.refreshAccount();
-    this.nightMode = SettingsStore.getBool(SettingKeys.NIGHT, SettingDefaults.NIGHT);
     this.themeIndex = SettingsStore.getInt(SettingKeys.THEME, SettingDefaults.THEME);
     applyWindowTheme(this.ctx, this.nightMode);
   }
@@ -396,7 +398,7 @@ struct Index {
   }
 
   private bottomContentInset(): number {
-    return this.floatingBottomBar ? HOME_FLOATING_CONTENT_INSET : 76;
+    return (this.floatingBottomBar ? HOME_FLOATING_CONTENT_INSET : 76) + this.bottomSafeAreaInset;
   }
 
   private accentTextColor(): string {
@@ -708,16 +710,12 @@ struct Index {
   build() {
     Column() {
       Navigation() {
-        Tabs({ index: this.currentMainTab,
-          // 同色渐变作为不透明底色层，不受原生材质清空 backgroundColor 的影响。
-          barModifier: new CommonModifier().linearGradient({
-            direction: GradientDirection.Bottom,
-            colors: [[this.pageBg(), 0], [this.pageBg(), 1]]
-          }) }) {
+        Tabs({ index: this.currentMainTab }) {
           TabContent() {
             this.FavoritesContent()
           }
           .tabBar(new BottomTabBarStyle($r('app.media.ic_nav_favorite'), '收藏')
+            .padding({ bottom: this.floatingBottomBar ? 0 : this.bottomSafeAreaInset })
             .iconStyle({ selectedColor: this.accentTextColor(), unselectedColor: this.subTextColor() })
             .labelStyle({ selectedColor: this.accentTextColor(), unselectedColor: this.subTextColor() }))
 
@@ -725,6 +723,7 @@ struct Index {
             this.BoardsContent()
           }
           .tabBar(new BottomTabBarStyle($r('app.media.ic_nav_boards'), '板块')
+            .padding({ bottom: this.floatingBottomBar ? 0 : this.bottomSafeAreaInset })
             .iconStyle({ selectedColor: this.accentTextColor(), unselectedColor: this.subTextColor() })
             .labelStyle({ selectedColor: this.accentTextColor(), unselectedColor: this.subTextColor() }))
 
@@ -739,6 +738,7 @@ struct Index {
             })
           }
           .tabBar(new BottomTabBarStyle($r('app.media.ic_nav_message'), '消息')
+            .padding({ bottom: this.floatingBottomBar ? 0 : this.bottomSafeAreaInset })
             .iconStyle({ selectedColor: this.accentTextColor(), unselectedColor: this.subTextColor() })
             .labelStyle({ selectedColor: this.accentTextColor(), unselectedColor: this.subTextColor() }))
 
@@ -746,18 +746,18 @@ struct Index {
             this.MyContent()
           }
           .tabBar(new BottomTabBarStyle($r('app.media.ic_person'), '我的')
+            .padding({ bottom: this.floatingBottomBar ? 0 : this.bottomSafeAreaInset })
             .iconStyle({ selectedColor: this.accentTextColor(), unselectedColor: this.subTextColor() })
             .labelStyle({ selectedColor: this.accentTextColor(), unselectedColor: this.subTextColor() }))
         }
         .width('100%')
-        .height('100%')
+        .height(LayoutPolicy.matchParent)
         .barPosition(BarPosition.End)
         .barMode(BarMode.Fixed)
-        .barHeight(this.floatingBottomBar ? HOME_FLOATING_BAR_HEIGHT : 64)
+        .barHeight(this.floatingBottomBar ? HOME_FLOATING_BAR_HEIGHT : 64 + this.bottomSafeAreaInset)
         .attributeModifier(new HomeBottomBarModifier(this.nightMode, this.bottomSafeAreaInset))
-        // Tabs 默认扩展底部安全区，悬浮模式显式关闭，避免撑高胶囊背板。
-        .expandSafeArea(this.floatingBottomBar ? [] : [SafeAreaType.SYSTEM],
-          this.floatingBottomBar ? [] : [SafeAreaEdge.BOTTOM])
+        // 内容已铺满底部，底栏不再扩展自身背景绘制。
+        .expandSafeArea([], [])
         .backgroundColor(this.pageBg())
         .scrollable(false)
         .animationDuration(180)
@@ -769,18 +769,21 @@ struct Index {
         })
       }
       .width('100%')
-      .height('100%')
+      .height(LayoutPolicy.matchParent)
       .mode(NavigationMode.Stack)
       .hideBackButton(true)
       .titleMode(NavigationTitleMode.Mini)
       .title(this.MainNavigationTitle(), topicTitleOptions(this.nightMode, BarStyle.STANDARD))
       .hideToolBar(true)
+      .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.BOTTOM])
       .backgroundColor(this.pageBg())
     }
     .width('100%')
-    .height('100%')
+    .height(LayoutPolicy.matchParent)
+    .padding({ top: this.getUIContext().px2vp(this.topSafeAreaPx) })
+    .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.BOTTOM])
     .backgroundColor(this.pageBg())
-    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 
   /* ---------- 板块：本地搜索与纵向分类 ---------- */

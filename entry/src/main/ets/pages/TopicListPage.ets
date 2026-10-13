@@ -5,12 +5,14 @@
  */
 
 import { common } from '@kit.AbilityKit';
+import { window } from '@kit.ArkUI';
 import {
   COLOR_ACCENT_BLUE,
   COLOR_DAY_BG, COLOR_NIGHT_BG, COLOR_DAY_CARD, COLOR_NIGHT_CARD,
-  COLOR_DAY_TEXT, COLOR_NIGHT_TEXT, COLOR_DAY_SUB, COLOR_NIGHT_SUB, themeAccentTextColor, applyWindowTheme
+  COLOR_DAY_TEXT, COLOR_NIGHT_TEXT, COLOR_DAY_SUB, COLOR_NIGHT_SUB, themeAccentTextColor, applyWindowTheme,
+  WINDOW_TOP_SAFE_AREA_PX_KEY
 } from '../model/AppTheme';
-import { SettingsStore, SettingKeys, SettingDefaults } from '../model/AppSettings';
+import { SettingsStore, SettingKeys, SettingDefaults, NIGHT_MODE_STORAGE_KEY } from '../model/AppSettings';
 import { LoginStore } from '../model/LoginStore';
 import { TopicPostStore } from '../model/TopicPostStore';
 import { PostGripObserver } from '../model/PostGripObserver';
@@ -30,12 +32,14 @@ const FLOATING_POST_BUTTON_INSET: number = 18;
 @Entry
 @Component
 struct TopicListPage {
-  @State nightMode: boolean = SettingDefaults.NIGHT;
+  @StorageLink(WINDOW_TOP_SAFE_AREA_PX_KEY) private topSafeAreaPx: number = 0;
+  @StorageLink(NIGHT_MODE_STORAGE_KEY) nightMode: boolean = SettingDefaults.NIGHT;
   @State themeIndex: number = SettingDefaults.THEME;
   @State fid: number = 0;
   @State stid: number = 0;
   @State title: string = '';
   @State threadList: ThreadPageInfo[] = [];
+  @State private showBoardRecommendations: boolean = false;
   @State currentPage: number = 1;
   @State isLoading: boolean = false;
   @State isRefreshing: boolean = false;
@@ -47,17 +51,29 @@ struct TopicListPage {
   @State pageStack: NavPathStack = new NavPathStack();
   @State private postButtonOnLeft: boolean = false;
   @State private postContentWidth: number = 0;
+  @State private bottomSafeAreaInset: number = 0;
 
   private ctx: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
   private postGripObserver: PostGripObserver = new PostGripObserver();
   private publishAccountKey: string = '';
   private publishRevision: number = 0;
+  private boardMounted: boolean = false;
+  private boardWindow: window.Window | undefined = undefined;
+  private observingBoardWindow: boolean = false;
+  private onBottomAvoidAreaChanged: (options: window.AvoidAreaOptions) => void =
+    (options: window.AvoidAreaOptions): void => {
+      if (this.boardMounted && (options.type === window.AvoidAreaType.TYPE_SYSTEM ||
+        options.type === window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR)) {
+        this.updateBottomSafeArea();
+      }
+    };
 
   aboutToAppear(): void {
+    this.boardMounted = true;
+    this.observeBottomSafeArea();
     SettingsStore.init(this.ctx);
     LoginStore.init(this.ctx);
     RecentBoardStore.init(this.ctx);
-    this.nightMode = SettingsStore.getBool(SettingKeys.NIGHT, SettingDefaults.NIGHT);
     this.themeIndex = SettingsStore.getInt(SettingKeys.THEME, SettingDefaults.THEME);
 
     // 从路由参数获取板块信息
@@ -88,7 +104,11 @@ struct TopicListPage {
   }
 
   onPageShow(): void {
-    this.nightMode = SettingsStore.getBool(SettingKeys.NIGHT, SettingDefaults.NIGHT);
+    if (this.boardWindow !== undefined) {
+      this.updateBottomSafeArea();
+    } else {
+      this.observeBottomSafeArea();
+    }
     applyWindowTheme(this.ctx, this.nightMode);
     this.refreshPublishedTopics();
     this.postGripObserver.start((isLeft: boolean): void => this.updatePostButtonSide(isLeft));
@@ -99,7 +119,47 @@ struct TopicListPage {
   }
 
   aboutToDisappear(): void {
+    this.boardMounted = false;
+    if (this.boardWindow !== undefined) {
+      this.boardWindow.off('avoidAreaChange', this.onBottomAvoidAreaChanged);
+      this.boardWindow = undefined;
+    }
     this.postGripObserver.stop();
+  }
+
+  private async observeBottomSafeArea(): Promise<void> {
+    if (this.observingBoardWindow || this.boardWindow !== undefined || !this.boardMounted) {
+      return;
+    }
+    this.observingBoardWindow = true;
+    try {
+      const boardWindow: window.Window = await window.getLastWindow(this.ctx);
+      if (!this.boardMounted) {
+        return;
+      }
+      this.boardWindow = boardWindow;
+      boardWindow.on('avoidAreaChange', this.onBottomAvoidAreaChanged);
+      this.updateBottomSafeArea();
+    } catch (error) {
+      // 底部背景始终延伸；控件避让读取失败时在页面再次显示时重试。
+    } finally {
+      this.observingBoardWindow = false;
+    }
+  }
+
+  private updateBottomSafeArea(): void {
+    if (this.boardWindow === undefined) {
+      return;
+    }
+    try {
+      const systemArea: window.AvoidArea = this.boardWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
+      const navigationArea: window.AvoidArea = this.boardWindow
+        .getWindowAvoidArea(window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR);
+      this.bottomSafeAreaInset = this.getUIContext()
+        .px2vp(Math.max(systemArea.bottomRect.height, navigationArea.bottomRect.height));
+    } catch (error) {
+      // 窗口切换期间保留上次有效间距。
+    }
   }
 
   private updatePostButtonSide(isLeft: boolean): void {
@@ -209,7 +269,8 @@ struct TopicListPage {
     this.loadMoreError = '';
     try {
       const url: string = UrlBuilder.buildTopicListUrl(this.fid, page, this.stid);
-      const result = await HttpClient.get(url);
+      // 在线列表始终重新请求，避免下拉刷新或发帖返回时复用系统 HTTP 缓存。
+      const result = await HttpClient.get(url, undefined, false);
       const topicInfo: TopicListInfo = NgaJsonParser.parseTopicList(result.body);
       if (result.success && topicInfo.success) {
         const nextThreads: ThreadPageInfo[] = page === 1 ? [] : this.threadList.slice();
@@ -266,6 +327,20 @@ struct TopicListPage {
     this.loadTopicList(this.currentPage + 1);
   }
 
+  private isBoardRecommendation(thread: ThreadPageInfo): boolean {
+    // 原客户端按 recommend > 9 识别网事杂谈的特殊推荐；仅收纳首条，保留其他高推荐话题的位置。
+    return this.fid === -7 && this.stid === 0 && thread.recommend > 9 &&
+      this.threadList.length > 0 && this.threadList[0].tid === thread.tid;
+  }
+
+  private recommendedThreads(): ThreadPageInfo[] {
+    return this.threadList.filter((thread: ThreadPageInfo): boolean => this.isBoardRecommendation(thread));
+  }
+
+  private latestThreads(): ThreadPageInfo[] {
+    return this.threadList.filter((thread: ThreadPageInfo): boolean => !this.isBoardRecommendation(thread));
+  }
+
   private onThreadClick(thread: ThreadPageInfo): void {
     this.getUIContext().getRouter().pushUrl({
       url: 'pages/ArticleListPage',
@@ -299,7 +374,7 @@ struct TopicListPage {
       .height(56)
       .backgroundColor(this.accentColor())
       .shadow({ radius: 16, color: this.nightMode ? '#40000000' : '#261765c1', offsetY: 6 })
-      .margin({ left: FLOATING_POST_BUTTON_INSET, bottom: 24 })
+      .margin({ left: FLOATING_POST_BUTTON_INSET, bottom: 24 + this.bottomSafeAreaInset })
       .translate({ x: this.postButtonTranslation() })
       .opacity(this.postContentWidth > 0 ? 1 : 0)
       .zIndex(1)
@@ -309,21 +384,29 @@ struct TopicListPage {
   }
 
   build() {
-    Navigation(this.pageStack) {
-    }
-    .navDestination(this.TopicDestination)
-    .hideTitleBar(true)
-    .mode(NavigationMode.Stack)
-    .width('100%')
-    .height('100%')
-    .backgroundColor(this.pageBg())
-    // 仅延伸背景绘制，内部内容仍使用原生安全区布局。
-    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
-    .onAppear(() => {
-      if (this.pageStack.size() === 0) {
-        this.pageStack.pushPath({ name: 'TopicBoard' }, { animated: false });
+    Column() {
+      Navigation(this.pageStack) {
       }
-    })
+      .navDestination(this.TopicDestination)
+      .hideTitleBar(true)
+      .mode(NavigationMode.Stack)
+      .width('100%')
+      .height(LayoutPolicy.matchParent)
+      .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.BOTTOM])
+      .backgroundColor(this.pageBg())
+      .onAppear(() => {
+        if (this.pageStack.size() === 0) {
+          this.pageStack.pushPath({ name: 'TopicBoard' }, { animated: false });
+        }
+      })
+    }
+    .width('100%')
+    .height(LayoutPolicy.matchParent)
+    .padding({ top: this.getUIContext().px2vp(this.topSafeAreaPx) })
+    .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.BOTTOM])
+    .backgroundColor(this.pageBg())
+    // 路由首帧即铺满底部，发帖按钮与列表末项使用动态避让。
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 
   @Builder
@@ -332,6 +415,8 @@ struct TopicListPage {
       NavDestination() {
         this.TopicContent()
       }
+      // 背景和列表延伸到手势区，发帖按钮与页尾内容独立避让。
+      .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.BOTTOM])
       .title(this.title, topicTitleOptions(this.nightMode))
       .hideBackButton(false)
       .backgroundColor(this.pageBg())
@@ -428,11 +513,43 @@ struct TopicListPage {
   TopicListView() {
     Refresh({ refreshing: $$this.isRefreshing }) {
       List({ space: 8 }) {
+        if (this.recommendedThreads().length > 0) {
+          ListItem() {
+            Button({ type: ButtonType.Normal }) {
+              Row({ space: 8 }) {
+                Text('板块推荐').fontSize(14).fontWeight(FontWeight.Medium).fontColor(this.replyCountColor())
+                Text(this.recommendedThreads().length.toString()).fontSize(12).fontColor(this.subTextColor())
+                Blank()
+                Text(this.showBoardRecommendations ? '收起' : '展开').fontSize(12)
+                  .fontColor(this.replyCountColor())
+              }
+              .width('100%')
+              .padding({ left: 16, right: 16 })
+            }
+            .width('100%')
+            .height(44)
+            .borderRadius(16)
+            .backgroundColor(topicSecondarySurfaceColor(this.nightMode))
+            .id('board-recommendations-toggle')
+            .accessibilityText('板块推荐，' + this.recommendedThreads().length.toString() + '个话题，' +
+              (this.showBoardRecommendations ? '点击收起' : '点击展开'))
+            .onClick((): void => {
+              this.showBoardRecommendations = !this.showBoardRecommendations;
+            })
+          }
+          if (this.showBoardRecommendations) {
+            ForEach(this.recommendedThreads(), (recommendedThread: ThreadPageInfo) => {
+              ListItem() {
+                this.ThreadItem(recommendedThread)
+              }
+            }, (recommendedThread: ThreadPageInfo) => recommendedThread.tid.toString())
+          }
+        }
         ListItem() {
           Row() {
             Text('最新话题').fontSize(14).fontWeight(FontWeight.Medium).fontColor(this.subTextColor())
             Blank()
-            Text(this.threadList.length.toString() + ' 个话题').fontSize(12).fontColor(this.subTextColor())
+            Text(this.latestThreads().length.toString() + ' 个话题').fontSize(12).fontColor(this.subTextColor())
           }
           .width('100%')
           .padding({ top: 8, bottom: 8 })
@@ -449,7 +566,7 @@ struct TopicListPage {
             .width('100%').padding(16).borderRadius(20).backgroundColor(this.cardBg())
           }
         }
-        ForEach(this.threadList, (thread: ThreadPageInfo) => {
+        ForEach(this.latestThreads(), (thread: ThreadPageInfo) => {
           ListItem() {
             this.ThreadItem(thread)
           }
@@ -500,7 +617,7 @@ struct TopicListPage {
       .width('100%')
       .layoutWeight(1)
       .contentStartOffset(64)
-      .contentEndOffset(104)
+      .contentEndOffset(104 + this.bottomSafeAreaInset)
       .padding({ left: 16, right: 16 })
       .scrollBar(BarState.Off)
       .edgeEffect(EdgeEffect.Spring)

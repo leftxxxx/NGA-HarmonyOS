@@ -11,10 +11,12 @@ import {
   COLOR_ACCENT_BLUE,
   COLOR_DAY_BG, COLOR_NIGHT_BG, COLOR_DAY_CARD, COLOR_NIGHT_CARD,
   COLOR_DAY_TEXT, COLOR_NIGHT_TEXT, COLOR_DAY_SUB, COLOR_NIGHT_SUB, COLOR_DAY_ERROR,
-  applyWindowTheme, themeAccentTextColor, themeSecondarySurfaceColor
+  applyApplicationColorMode, applyWindowTheme, themeAccentTextColor, themeSecondarySurfaceColor
 } from '../model/AppTheme';
 import { fileIo as fs } from '@kit.CoreFileKit';
-import { SettingsStore, SettingKeys, SettingDefaults } from '../model/AppSettings';
+import {
+  SettingsStore, SettingKeys, SettingDefaults, NIGHT_MODE_STORAGE_KEY, NIGHT_POLICY_STORAGE_KEY, NightModePolicy
+} from '../model/AppSettings';
 import { CacheUtil } from '../model/CacheUtil';
 import { LoginStore } from '../model/LoginStore';
 import { UserManager } from '../model/UserManager';
@@ -58,7 +60,7 @@ struct OptionPanelDialog {
   title: ResourceStr = '';
   options: OptionItem[] = [];
   selectedValue: number = 0;
-  nightMode: boolean = false;
+  @StorageLink(NIGHT_MODE_STORAGE_KEY) nightMode: boolean = false;
   accentColorStr: string = COLOR_ACCENT_BLUE;
   onSelected: (value: number) => void = () => {};
 
@@ -116,7 +118,7 @@ struct OptionPanelDialog {
 @CustomDialog
 struct ClearCacheDialog {
   controller: CustomDialogController;
-  nightMode: boolean = false;
+  @StorageLink(NIGHT_MODE_STORAGE_KEY) nightMode: boolean = false;
   accentColorStr: string = COLOR_ACCENT_BLUE;
   onConfirm: () => void = () => {};
 
@@ -168,7 +170,9 @@ struct ClearCacheDialog {
 @Entry
 @Component
 struct SettingsPage {
-  @State nightMode: boolean = SettingDefaults.NIGHT;
+  @StorageLink(NIGHT_MODE_STORAGE_KEY) nightMode: boolean = SettingDefaults.NIGHT;
+  @StorageLink(NIGHT_POLICY_STORAGE_KEY) private nightModePolicy: number = SettingDefaults.NIGHT_MODE;
+  @State private bottomSafeAreaInset: number = 0;
   @State themeIndex: number = SettingDefaults.THEME;
   @State fontIndex: number = SettingDefaults.FONT_SIZE;
   @State picIndex: number = SettingDefaults.LOAD_PIC;
@@ -186,7 +190,6 @@ struct SettingsPage {
       title: $r('app.string.settings_font_size'),
       options: FONT_OPTIONS,
       selectedValue: this.fontIndex,
-      nightMode: this.nightMode,
       accentColorStr: this.accentTextColor(),
       onSelected: (value: number) => { this.selectFont(value); }
     }),
@@ -200,7 +203,6 @@ struct SettingsPage {
       title: $r('app.string.settings_load_pic'),
       options: PIC_OPTIONS,
       selectedValue: this.picIndex,
-      nightMode: this.nightMode,
       accentColorStr: this.accentTextColor(),
       onSelected: (value: number) => { this.selectPic(value); }
     }),
@@ -214,7 +216,6 @@ struct SettingsPage {
       title: $r('app.string.settings_domain'),
       options: DOMAIN_OPTIONS,
       selectedValue: this.domainIndex,
-      nightMode: this.nightMode,
       accentColorStr: this.accentTextColor(),
       onSelected: (value: number) => { this.selectDomain(value); }
     }),
@@ -225,7 +226,6 @@ struct SettingsPage {
 
   private clearCacheController: CustomDialogController = new CustomDialogController({
     builder: ClearCacheDialog({
-      nightMode: this.nightMode,
       accentColorStr: this.accentTextColor(),
       onConfirm: () => { this.confirmClearCache(); }
     }),
@@ -236,7 +236,6 @@ struct SettingsPage {
 
   aboutToAppear(): void {
     SettingsStore.init(this.ctx);
-    this.nightMode = SettingsStore.getBool(SettingKeys.NIGHT, SettingDefaults.NIGHT);
     applyWindowTheme(this.ctx, this.nightMode);
     this.themeIndex = SettingsStore.getInt(SettingKeys.THEME, SettingDefaults.THEME);
     this.fontIndex = SettingsStore.getInt(SettingKeys.FONT_SIZE, SettingDefaults.FONT_SIZE);
@@ -251,6 +250,31 @@ struct SettingsPage {
   onPageShow(): void {
     this.refreshLoginState();
     this.refreshCacheSize();
+  }
+
+  private nightModePolicyLabel(): string {
+    return this.nightModePolicy === NightModePolicy.DARK ? '始终开启' :
+      (this.nightModePolicy === NightModePolicy.LIGHT ? '始终关闭' : '跟随系统');
+  }
+
+  private async chooseNightMode(): Promise<void> {
+    try {
+      const choice = await this.getUIContext().getPromptAction().showActionMenu({
+        title: '夜间模式',
+        buttons: [
+          { text: '跟随系统', color: this.accentTextColor() },
+          { text: '始终开启', color: this.accentTextColor() },
+          { text: '始终关闭', color: this.accentTextColor() }
+        ]
+      });
+      const policy: NightModePolicy = choice.index === 1 ? NightModePolicy.DARK :
+        (choice.index === 2 ? NightModePolicy.LIGHT : NightModePolicy.SYSTEM);
+      SettingsStore.setNightModePolicy(policy);
+      applyApplicationColorMode(this.ctx);
+      applyWindowTheme(this.ctx, SettingsStore.isNightMode());
+    } catch (error) {
+      // 取消选择保留原策略。
+    }
   }
 
   /* ---------- 状态与工具方法 ---------- */
@@ -374,14 +398,17 @@ struct SettingsPage {
       AppSubPage({
         pageTitle: $r('app.string.settings_title'),
         nightMode: this.nightMode,
-        pageBackground: this.pageBg()
+        pageBackground: this.pageBg(),
+        onBottomInsetChanged: (inset: number): void => { this.bottomSafeAreaInset = inset; }
       }) {
         this.PageContent()
       }
     }
     .width('100%')
-    .height('100%')
+    .height(LayoutPolicy.matchParent)
     .backgroundColor(this.pageBg())
+    .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.BOTTOM])
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 
   @Builder
@@ -420,7 +447,7 @@ struct SettingsPage {
           this.RowAbout()
 
           Column() {}
-          .height(24)
+          .height(24 + this.bottomSafeAreaInset)
         }
         .width('100%')
       }
@@ -468,23 +495,22 @@ struct SettingsPage {
         .fontSize(16)
         .fontColor(this.mainTextColor())
         .layoutWeight(1)
-      Text(this.nightMode ? $r('app.string.settings_on') : $r('app.string.settings_off'))
+      Text(this.nightModePolicyLabel())
         .fontSize(14)
         .fontColor(this.subTextColor())
         .margin({ right: 10 })
-      Toggle({ type: ToggleType.Switch, isOn: this.nightMode })
-        .selectedColor(this.accentColor())
-        .onChange((isOn: boolean) => {
-          this.nightMode = isOn;
-          SettingsStore.setBool(SettingKeys.NIGHT, isOn);
-          applyWindowTheme(this.ctx, isOn);
-        })
+      SymbolGlyph($r('sys.symbol.chevron_right'))
+        .fontSize(16)
+        .fontColor([this.subTextColor()])
     }
     .width('100%')
     .height(52)
     .padding({ left: 16, right: 16 })
     .backgroundColor(this.cardBg())
     .alignItems(VerticalAlign.Center)
+    .id('settings-night-mode')
+    .accessibilityText('夜间模式，' + this.nightModePolicyLabel() + '，点击更改')
+    .onClick((): void => { this.chooseNightMode(); })
   }
 
   @Builder

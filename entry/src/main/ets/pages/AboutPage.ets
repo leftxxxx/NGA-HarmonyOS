@@ -6,7 +6,7 @@
 
 import { common, Want, bundleManager } from '@kit.AbilityKit';
 import { util } from '@kit.ArkTS';
-import { SettingsStore, SettingKeys, SettingDefaults } from '../model/AppSettings';
+import { SettingsStore, SettingKeys, SettingDefaults, NIGHT_MODE_STORAGE_KEY } from '../model/AppSettings';
 import { AppSubPage } from '../components/AppSubPage';
 import {
   COLOR_DAY_BG, COLOR_NIGHT_BG, COLOR_DAY_CARD, COLOR_NIGHT_CARD,
@@ -36,7 +36,8 @@ const LICENSE_FALLBACK: string = 'GNU GPL v2\n开放源代码许可';
 @Entry
 @Component
 struct AboutPage {
-  @State nightMode: boolean = SettingDefaults.NIGHT;
+  @StorageLink(NIGHT_MODE_STORAGE_KEY) nightMode: boolean = SettingDefaults.NIGHT;
+  @State private bottomSafeAreaInset: number = 0;
   @State versionName: string = '3.7.6';
   @State showLicense: boolean = false;
   @State licenseText: string = '';
@@ -45,7 +46,6 @@ struct AboutPage {
 
   aboutToAppear(): void {
     SettingsStore.init(this.ctx);
-    this.nightMode = SettingsStore.getBool(SettingKeys.NIGHT, SettingDefaults.NIGHT);
     this.versionName = this.readVersionName();
   }
 
@@ -116,6 +116,7 @@ struct AboutPage {
         pageTitle: $r('app.string.settings_about'),
         nightMode: this.nightMode,
         pageBackground: this.pageBg(),
+        onBottomInsetChanged: (inset: number): void => { this.bottomSafeAreaInset = inset; },
         onNavigateBack: () => {
           if (this.showLicense) {
             this.showLicense = false;
@@ -128,8 +129,10 @@ struct AboutPage {
       }
     }
     .width('100%')
-    .height('100%')
+    .height(LayoutPolicy.matchParent)
     .backgroundColor(this.pageBg())
+    .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.BOTTOM])
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 
   @Builder
@@ -142,7 +145,7 @@ struct AboutPage {
             this.DevGroup()
             this.GroupTitle(THANKS_GROUP_TITLE)
             Column()
-              .height(24)
+              .height(24 + this.bottomSafeAreaInset)
           }
           .width('100%')
         }

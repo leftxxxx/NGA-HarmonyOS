@@ -161,6 +161,26 @@ export function articleImageFromLink(link: string, html: string): string {
   }
 }
 
+/** Only generated head colors and the night emoticon filter may change without replacing the article. */
+function withoutArticleTheme(html: string): string {
+  const head: RegExpMatchArray | null = html.match(/^([\s\S]*?<head>)([\s\S]*?)(<\/head>[\s\S]*)$/);
+  if (head === null) {
+    return html;
+  }
+  const normalizedHead: string = (head[2] ?? '').replace(/<style>([\s\S]*?)<\/style>/g,
+    (matched: string, css: string): string => '<style>' + css
+      .replace(/(^|[;{])(background|color):#[0-9a-f]{6}(?=[;}])/gi, '$1$2:#theme')
+      .replace(/(border-left:[^;{}]*?\s)#[0-9a-f]{6}(?=[;}])/gi, '$1#theme')
+      .replace(/img\.invertFilter\{filter:invert\(100%\);\}/g, '') + '</style>');
+  return (head[1] ?? '') + normalizedHead + (head[3] ?? '');
+}
+
+/** Body markup, viewport and layout CSS stay exact; a normal reload remains a normal reload. */
+export function articleHtmlHasOnlyThemeChange(previousHtml: string, nextHtml: string): boolean {
+  return previousHtml.length > 0 && previousHtml !== nextHtml &&
+    withoutArticleTheme(previousHtml) === withoutArticleTheme(nextHtml);
+}
+
 /**
  * 纯函数：正文先转义，随后只生成允许的 BBCode HTML。
  * resolver 接收 emoticon/ac/... 等 rawfile 路径，返回本地图片 data URI。

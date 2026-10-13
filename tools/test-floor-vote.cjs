@@ -36,6 +36,13 @@ require.extensions['.ets'] = (module, filename) => {
 
 const { NgaJsonParser } = require('../entry/src/main/ets/model/NgaJsonParser.ets');
 const { ThreadRowInfo } = require('../entry/src/main/ets/model/ThreadRowInfo.ets');
+const themeContext = vm.createContext({ exports: {}, require: () => ({}) });
+const themePath = path.join(root, 'entry/src/main/ets/model/AppTheme.ets');
+vm.runInContext(ts.transpileModule(fs.readFileSync(themePath, 'utf8'), {
+  fileName: themePath,
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 }
+}).outputText, themeContext);
+const theme = themeContext.exports;
 const pagePath = path.join(root, 'entry/src/main/ets/pages/ArticleListPage.ets');
 const pageSource = fs.readFileSync(pagePath, 'utf8');
 const pageAst = ts.createSourceFile(pagePath, pageSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.ETS, parserOptions);
@@ -85,11 +92,19 @@ function reply(overrides = {}) {
 }
 function voteFixture() {
   const requests = [], routes = [], toasts = [];
-  const config = { post: async () => ({ success: true, body: '{"data":{"0":"你对这个帖子表示支持"}}' }) };
+  const config = { uid: '1001',
+    post: async () => ({ success: true, body: '{"data":{"0":"你对这个帖子表示支持"}}' }) };
   const host = realMethods(['likePost', 'isValidPostTarget', 'postKey', 'postTargetLabel',
-    'voteMessage', 'formatVoteResult', 'replyToPost'], {
+    'voteMessage', 'formatVoteResult', 'replyToPost', 'isVoteSelected', 'voteIconColor',
+    'voteButtonBackground'], {
     NgaJsonParser,
     ThreadRowInfo,
+    LoginStore: { getUser: () => ({ uid: config.uid }) },
+    themeAccentTextColor: theme.themeAccentTextColor,
+    topicSecondarySurfaceColor: theme.themeSecondarySurfaceColor,
+    COLOR_DAY_SUB: theme.COLOR_DAY_SUB,
+    COLOR_NIGHT_SUB: theme.COLOR_NIGHT_SUB,
+    Color: { Transparent: 'transparent' },
     UrlBuilder: { buildLikeUrl() { return 'https://forum.invalid/nuke.php'; } },
     HttpClient: { post(url, fields, authenticated) {
       requests.push({ url, fields: { ...fields }, authenticated });
@@ -98,6 +113,7 @@ function voteFixture() {
     console: { info() {}, warn() {}, error() {} }
   });
   Object.assign(host, { tid: TID, fid: 7, title: '测试主题', currentPage: 1, rowList: [],
+    selectedVotes: new Map(), voteAccountUid: config.uid, readerMounted: true, nightMode: false,
     voteFeedback: new Map(), isPerformingAction: false, actionMsg: '原有收藏提示',
     getUIContext: () => ({
       getRouter: () => ({ pushUrl: route => { routes.push(JSON.parse(JSON.stringify(route))); return Promise.resolve(); } }),
@@ -375,4 +391,175 @@ test('reply navigation uses the same post target guard and the actual clicked re
   assert.equal(f.routes.length, 1, 'Malformed replies must not navigate with pid=0');
   assert.equal(f.toasts.length, 4);
   assert.ok(f.toasts.every(toast => /无法确认|重新加载/.test(toast.message)));
+});
+
+function confirmedVote(message) {
+  return { success: true, body: JSON.stringify({ data: { 0: message } }) };
+}
+function assertSelection(host, row, expected) {
+  assert.equal(host.isVoteSelected(row, 1), expected === 1, 'Support highlight');
+  assert.equal(host.isVoteSelected(row, -1), expected === -1, 'Oppose highlight');
+  assert.equal(host.isVoteSelected(row, 0), false, 'Cancellation is not a selected direction');
+}
+
+test('confirmed support and opposition are exclusive and scoped to the clicked floor', async () => {
+  const f = voteFixture(), row = reply(), other = reply({ pid: 881645207, lou: 4 });
+  assertSelection(f.host, row, 0);
+  await f.host.likePost(row, 1);
+  assertSelection(f.host, row, 1);
+  assertSelection(f.host, other, 0);
+  f.config.post = async () => confirmedVote('你对这个帖子表示反对');
+  await f.host.likePost(row, -1);
+  assertSelection(f.host, row, -1);
+  await f.host.likePost(other, -1);
+  assertSelection(f.host, row, -1);
+  assertSelection(f.host, other, -1);
+  assert.equal(f.host.selectedVotes.size, 2);
+});
+
+test('explicit support or opposition withdrawal clears both highlights', async () => {
+  for (const [direction, message] of [[1, '你取消了对这个帖子的支持'], [-1, '你撤回了对这个帖子的反对']]) {
+    const f = voteFixture(), row = reply();
+    f.config.post = async () => confirmedVote(direction === 1 ? '你对这个帖子表示支持' : '你对这个帖子表示反对');
+    await f.host.likePost(row, direction);
+    assertSelection(f.host, row, direction);
+    f.config.post = async () => confirmedVote(message);
+    await f.host.likePost(row, direction);
+    assertSelection(f.host, row, 0);
+    assert.match(f.host.voteMessage(row), /取消|撤回/);
+  }
+});
+
+test('already-voted response highlights the confirmed direction instead of the clicked direction', async () => {
+  const f = voteFixture(), row = reply();
+  f.config.post = async () => confirmedVote('你已经对这个帖子表示反对');
+  await f.host.likePost(row, 1);
+  assertSelection(f.host, row, -1);
+  f.config.post = async () => confirmedVote('你已经对这个帖子表示支持');
+  await f.host.likePost(row, -1);
+  assertSelection(f.host, row, 1);
+});
+
+test('HTTP, business, malformed, ambiguous, and thrown failures preserve the prior highlight', async () => {
+  const responses = [
+    async () => ({ success: false, body: '' }),
+    async () => { throw new Error('offline'); },
+    async () => ({ success: true, body: '{"error":"未登录","data":{"0":"你对这个帖子表示反对"}}' }),
+    async () => ({ success: true, body: '{"error":0,"data":{"error":"没有权限","0":"你对这个帖子表示反对"}}' }),
+    async () => ({ success: true, body: '{"__MESSAGE":{"0":1,"1":"没有权限"},"data":{"0":"你对这个帖子表示反对"}}' }),
+    async () => ({ success: true, body: '{' }),
+    async () => confirmedVote('操作成功'),
+    async () => confirmedVote('你没有对这个帖子表示反对')
+  ];
+  for (const response of responses) {
+    const f = voteFixture(), row = reply();
+    await f.host.likePost(row, 1);
+    f.config.post = response;
+    await f.host.likePost(row, -1);
+    assertSelection(f.host, row, 1);
+    assert.equal(f.host.isPerformingAction, false);
+  }
+});
+
+test('a pending request preserves the current highlight until its response is confirmed', async () => {
+  const f = voteFixture(), row = reply();
+  await f.host.likePost(row, 1);
+  let complete;
+  f.config.post = () => new Promise(resolve => { complete = resolve; });
+  const pending = f.host.likePost(row, -1);
+  assertSelection(f.host, row, 1);
+  complete(confirmedVote('你对这个帖子表示反对'));
+  await pending;
+  assertSelection(f.host, row, -1);
+});
+
+test('refresh and page reconstruction retain the confirmed highlight only for the same floor', async () => {
+  const f = voteFixture(), row = reply();
+  await f.host.likePost(row, 1);
+  f.host.rowList = [];
+  f.host.currentPage = 2;
+  const reconstructed = reply();
+  f.host.rowList = [reconstructed, reply({ pid: 881645208, lou: 22 })];
+  assert.notEqual(reconstructed, row);
+  assertSelection(f.host, reconstructed, 1);
+  assertSelection(f.host, f.host.rowList[1], 0);
+  assertSelection(f.host, reply({ tid: TID + 1 }), 0);
+});
+
+test('switching accounts isolates each confirmed highlight and signing out hides them', async () => {
+  const f = voteFixture(), row = reply();
+  await f.host.likePost(row, 1);
+  f.config.uid = '1002';
+  f.host.syncVoteAccount();
+  assertSelection(f.host, row, 0);
+  f.config.post = async () => confirmedVote('你对这个帖子表示反对');
+  await f.host.likePost(row, -1);
+  assertSelection(f.host, row, -1);
+  f.config.uid = '';
+  f.host.syncVoteAccount();
+  assertSelection(f.host, row, 0);
+  f.config.uid = '1001';
+  f.host.syncVoteAccount();
+  assertSelection(f.host, row, 1);
+  f.config.uid = '1002';
+  f.host.syncVoteAccount();
+  assertSelection(f.host, row, -1);
+});
+
+test('an in-flight highlight stays with its captured account and floor', async () => {
+  const f = voteFixture(), row = reply(), submitted = reply();
+  let complete;
+  f.config.post = () => new Promise(resolve => { complete = resolve; });
+  const pending = f.host.likePost(row, 1);
+  f.config.uid = '1002';
+  f.host.syncVoteAccount();
+  Object.assign(row, { pid: 881645207, lou: 4 });
+  complete(confirmedVote('你对这个帖子表示支持'));
+  await pending;
+  assertSelection(f.host, submitted, 0);
+  assertSelection(f.host, row, 0);
+  f.config.uid = '1001';
+  f.host.syncVoteAccount();
+  assertSelection(f.host, submitted, 1);
+  assertSelection(f.host, row, 0);
+});
+
+test('a response after reader unmount does not update highlights', async () => {
+  const f = voteFixture(), row = reply();
+  let complete;
+  f.config.post = () => new Promise(resolve => { complete = resolve; });
+  const pending = f.host.likePost(row, 1);
+  f.host.readerMounted = false;
+  complete(confirmedVote('你对这个帖子表示支持'));
+  await pending;
+  assert.equal(f.host.selectedVotes.size, 0);
+  assert.equal(f.host.isPerformingAction, false);
+});
+
+test('a guest response cannot create a confirmed account highlight', async () => {
+  const f = voteFixture(), row = reply();
+  f.config.uid = '';
+  f.host.syncVoteAccount();
+  await f.host.likePost(row, 1);
+  assertSelection(f.host, row, 0);
+  assert.equal(f.host.selectedVotes.size, 0);
+});
+
+test('selected icons and backgrounds use the application theme in day and night modes', async () => {
+  const f = voteFixture(), row = reply();
+  await f.host.likePost(row, 1);
+  const colors = [];
+  for (const nightMode of [false, true]) {
+    f.host.nightMode = nightMode;
+    const accent = theme.themeAccentTextColor(nightMode);
+    const surface = theme.themeSecondarySurfaceColor(nightMode);
+    const subtext = nightMode ? theme.COLOR_NIGHT_SUB : theme.COLOR_DAY_SUB;
+    assert.equal(f.host.voteIconColor(row, 1), accent);
+    assert.equal(f.host.voteButtonBackground(row, 1), surface);
+    assert.equal(f.host.voteIconColor(row, -1), subtext);
+    assert.equal(f.host.voteButtonBackground(row, -1), 'transparent');
+    assert.notEqual(accent, subtext);
+    colors.push([accent, surface]);
+  }
+  assert.notDeepEqual(colors[0], colors[1]);
 });

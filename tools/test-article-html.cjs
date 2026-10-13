@@ -14,7 +14,8 @@ require.extensions['.ets'] = (module, filename) => {
   assert.equal((result.diagnostics || []).filter(item => item.category === ts.DiagnosticCategory.Error).length, 0);
   module._compile(result.outputText, filename);
 };
-const { renderArticleContent, resolveArticleImageUrl, articleImageSources, articleImageFromLink } =
+const { renderArticleContent, resolveArticleImageUrl, articleImageSources, articleImageFromLink,
+  articleHtmlHasOnlyThemeChange } =
   require('../entry/src/main/ets/model/ArticleHtml.ets');
 const {
   EMOTION_CATEGORIES, getEmoticonList, getEmoticonRawfilePath, getLegacyEmoticonRawfilePath,
@@ -27,6 +28,59 @@ const localSource = rawfile => {
   return 'data:image/' + (rawfile.endsWith('.gif') ? 'gif' : 'png') + ';base64,' + data.toString('base64');
 };
 const imageCount = html => (html.match(/<img\b/g) || []).length;
+
+const themedDocument = (content, night, extraCss = '') => {
+  const background = night ? '#192333' : '#ffffff';
+  const text = night ? '#e9eff8' : '#182538';
+  const accent = night ? '#8dbeff' : '#1765c1';
+  return '<!DOCTYPE html><html><head><meta charset="utf-8">' +
+    '<meta name="viewport" content="width=device-width,initial-scale=1.0"><style>' +
+    'html{background:' + background + ';}body{background:' + background + ';color:' + text +
+    ';font-size:16px;line-height:1.75;padding:0;margin:0;overflow-wrap:anywhere;}' +
+    'img{max-width:100%;height:auto;}blockquote{margin:8px 0;padding:8px;border-left:3px solid ' + accent + ';}' +
+    (night ? 'img.invertFilter{filter:invert(100%);}' : '') + 'a{color:' + accent + ';}' + extraCss +
+    '</style></head><body>' + renderArticleContent(content) + '</body></html>';
+};
+
+test('only generated head colors and the night emoticon filter identify a theme transition', () => {
+  const body = '[color=#ff0000]红字[/color][quote]引用[/quote]' +
+    '[code]body{color:#abcdef;}[/code][img]https://img.nga.cn/attachments/a.png[/img]';
+  const day = themedDocument(body, false), night = themedDocument(body, true);
+  assert.equal(articleHtmlHasOnlyThemeChange(day, night), true);
+  assert.equal(articleHtmlHasOnlyThemeChange(night, day), true);
+  assert.deepEqual(articleImageSources(day), articleImageSources(night));
+  const previewDay = day.replace('html{background:#ffffff;}body{background:#ffffff;',
+    'html,body{background:#ffffff;');
+  const previewNight = night.replace('html{background:#192333;}body{background:#192333;',
+    'html,body{background:#192333;');
+  assert.equal(articleHtmlHasOnlyThemeChange(previewDay, previewNight), true);
+});
+
+test('theme classification retains exact body markup, image URLs, viewport and all layout rules', () => {
+  const body = '原正文[color=#ff0000]红字[/color][img]https://img.nga.cn/attachments/a.png[/img]';
+  const previous = themedDocument(body, false), night = themedDocument(body, true);
+  for (const next of [
+    themedDocument(body.replace('原正文', '新正文'), true),
+    themedDocument(body.replace('a.png', 'b.png'), true),
+    themedDocument(body.replace('#ff0000', '#00ff00'), true),
+    themedDocument('没有图片', true),
+    night.replace('font-size:16px', 'font-size:20px'),
+    night.replace('line-height:1.75', 'line-height:2'),
+    night.replace('border-left:3px', 'border-left:6px'),
+    night.replace('initial-scale=1.0', 'initial-scale=1.5'),
+    night.replace('invert(100%)', 'invert(50%)')
+  ]) {
+    assert.equal(articleHtmlHasOnlyThemeChange(previous, next), false);
+  }
+});
+
+test('initial, identical or body-only HTML must use the ordinary reload path', () => {
+  const day = themedDocument('正文', false);
+  assert.equal(articleHtmlHasOnlyThemeChange('', day), false);
+  assert.equal(articleHtmlHasOnlyThemeChange(day, day), false);
+  assert.equal(articleHtmlHasOnlyThemeChange('<body style="color:#ffffff">正文</body>',
+    '<body style="color:#192333">正文</body>'), false);
+});
 
 test('actual public main post renders three HTTPS attachments and line breaks', () => {
   const html = renderArticleContent(fixture.mainContent, fixture.attachmentBase, localSource);

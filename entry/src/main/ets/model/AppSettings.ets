@@ -4,7 +4,16 @@
  */
 
 import { preferences } from '@kit.ArkData';
-import { common } from '@kit.AbilityKit';
+import { common, ConfigurationConstant } from '@kit.AbilityKit';
+
+export const NIGHT_MODE_STORAGE_KEY: string = 'nga_night_mode';
+export const NIGHT_POLICY_STORAGE_KEY: string = 'nga_night_mode_policy';
+
+export enum NightModePolicy {
+  SYSTEM = 0,
+  LIGHT = 1,
+  DARK = 2
+}
 
 /** preferences 文件名 */
 const PREF_NAME: string = 'nga_app_settings';
@@ -13,6 +22,7 @@ const PREF_NAME: string = 'nga_app_settings';
 export class SettingKeys {
   static readonly THEME: string = 'material_theme';
   static readonly NIGHT: string = 'nightmode';
+  static readonly NIGHT_MODE: string = 'night_mode_policy';
   static readonly FONT_SIZE: string = 'topic_content_size';
   static readonly LOAD_PIC: string = 'pref_load_pic_strategy';
   static readonly DOMAIN: string = 'nga_domain';
@@ -22,6 +32,7 @@ export class SettingKeys {
 export class SettingDefaults {
   static readonly THEME: number = 0; // 统一白蓝配色
   static readonly NIGHT: boolean = false; // 关闭
+  static readonly NIGHT_MODE: NightModePolicy = NightModePolicy.SYSTEM;
   static readonly FONT_SIZE: number = 1; // 标准
   static readonly LOAD_PIC: number = 0; // 始终加载
   static readonly DOMAIN: number = 1; // https://bbs.nga.cn
@@ -33,6 +44,7 @@ export class SettingDefaults {
  */
 export class SettingsStore {
   private static store: preferences.Preferences | null = null;
+  private static systemNightMode: boolean = false;
 
   /** 初始化（幂等）。必须在读取 / 写入前调用一次。 */
   static init(context: common.Context): void {
@@ -42,6 +54,14 @@ export class SettingsStore {
       // 兼容旧棕/绿/黑主题值，只迁移配色项，保留其他设置与账号数据。
       if (SettingsStore.store.getSync(SettingKeys.THEME, SettingDefaults.THEME) !== SettingDefaults.THEME) {
         SettingsStore.store.putSync(SettingKeys.THEME, SettingDefaults.THEME);
+        SettingsStore.store.flush();
+      }
+      // 旧用户保留手动开关；新安装默认跟随系统，迁移只执行一次。
+      if (!SettingsStore.store.hasSync(SettingKeys.NIGHT_MODE)) {
+        const policy: NightModePolicy = SettingsStore.store.hasSync(SettingKeys.NIGHT) ?
+          (SettingsStore.getBool(SettingKeys.NIGHT, SettingDefaults.NIGHT) ? NightModePolicy.DARK : NightModePolicy.LIGHT) :
+          SettingDefaults.NIGHT_MODE;
+        SettingsStore.store.putSync(SettingKeys.NIGHT_MODE, policy);
         SettingsStore.store.flush();
       }
     }
@@ -83,5 +103,41 @@ export class SettingsStore {
     }
     SettingsStore.store.putSync(key, value);
     SettingsStore.store.flush();
+  }
+
+  static getNightModePolicy(): NightModePolicy {
+    const policy: number = SettingsStore.getInt(SettingKeys.NIGHT_MODE, SettingDefaults.NIGHT_MODE);
+    return policy === NightModePolicy.LIGHT || policy === NightModePolicy.DARK ? policy : NightModePolicy.SYSTEM;
+  }
+
+  static initializeAppearance(colorMode?: ConfigurationConstant.ColorMode): void {
+    SettingsStore.updateSystemColorMode(colorMode);
+    SettingsStore.publishNightMode();
+  }
+
+  static updateSystemColorMode(colorMode?: ConfigurationConstant.ColorMode): void {
+    if (colorMode !== ConfigurationConstant.ColorMode.COLOR_MODE_DARK &&
+      colorMode !== ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT) {
+      return;
+    }
+    SettingsStore.systemNightMode = colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
+    SettingsStore.publishNightMode();
+  }
+
+  static setNightModePolicy(policy: NightModePolicy): void {
+    const nextPolicy: NightModePolicy = policy === NightModePolicy.LIGHT || policy === NightModePolicy.DARK ?
+      policy : NightModePolicy.SYSTEM;
+    SettingsStore.setInt(SettingKeys.NIGHT_MODE, nextPolicy);
+    SettingsStore.publishNightMode();
+  }
+
+  static isNightMode(): boolean {
+    const policy: NightModePolicy = SettingsStore.getNightModePolicy();
+    return policy === NightModePolicy.DARK || (policy === NightModePolicy.SYSTEM && SettingsStore.systemNightMode);
+  }
+
+  private static publishNightMode(): void {
+    AppStorage.setOrCreate<number>(NIGHT_POLICY_STORAGE_KEY, SettingsStore.getNightModePolicy());
+    AppStorage.setOrCreate<boolean>(NIGHT_MODE_STORAGE_KEY, SettingsStore.isNightMode());
   }
 }

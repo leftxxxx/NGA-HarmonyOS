@@ -1,6 +1,6 @@
 import { webview } from '@kit.ArkWeb';
 import { COLOR_DAY_CARD } from '../model/AppTheme';
-import { articleImageFromLink, articleImageSources } from '../model/ArticleHtml';
+import { articleHtmlHasOnlyThemeChange, articleImageFromLink, articleImageSources } from '../model/ArticleHtml';
 import { ArticleImageSaver, NgaArticleImageSaveResult } from '../model/ArticleImageSaver';
 import { ArticleImageViewer } from './ArticleImageViewer';
 
@@ -19,6 +19,8 @@ export struct ArticleBody {
   private measureTimers: number[] = [];
   private measureRevision: number = 0;
   private bodyWidth: number = 0;
+  private loadedHtml: string = '';
+  private preserveThemeHeight: boolean = false;
 
   aboutToDisappear(): void {
     this.attached = false;
@@ -27,12 +29,20 @@ export struct ArticleBody {
   }
 
   private reloadHtml(): void {
-    this.showImageViewer = false;
+    const themeChange: boolean = articleHtmlHasOnlyThemeChange(this.loadedHtml, this.html);
+    if (!themeChange || !articleImageSources(this.html).includes(this.activeImageUrl)) {
+      this.showImageViewer = false;
+      this.activeImageUrl = '';
+    }
     this.cancelBodyMeasure();
-    this.bodyHeight = 32;
+    this.preserveThemeHeight = themeChange;
+    if (!themeChange) {
+      this.bodyHeight = 32;
+    }
     if (this.attached) {
       try {
         this.controller.loadData(this.html, 'text/html', 'UTF-8', this.baseUrl, this.baseUrl);
+        this.loadedHtml = this.html;
       } catch (err) {
         console.warn('[NGA.ArticleBody] 正文加载失败');
       }
@@ -55,7 +65,10 @@ export struct ArticleBody {
         // ASYNC_RENDER 的 surface 不能超过 7680 物理像素，保留绘制余量。
         // 使用普通布局而非 FIT_CONTENT，超长正文仍可在 Web 内完整滚动。
         const maxHeight: number = this.getUIContext().px2vp(7000);
-        this.bodyHeight = Math.min(Math.ceil(pageHeight), maxHeight);
+        // 纯配色重载时布局不变，图片重新解码前的短高度不能让楼层收缩。
+        const measuredHeight: number = this.preserveThemeHeight ?
+          Math.max(this.bodyHeight, Math.ceil(pageHeight)) : Math.ceil(pageHeight);
+        this.bodyHeight = Math.min(measuredHeight, maxHeight);
       }
     } catch (error) {
       console.warn('[NGA.ArticleBody] 正文高度暂不可读取');
@@ -100,14 +113,15 @@ export struct ArticleBody {
     }
     this.isSavingImage = true;
     const currentHtml: string = this.html;
+    const isCurrentArticle: () => boolean = (): boolean => this.attached &&
+      (currentHtml === this.html || articleHtmlHasOnlyThemeChange(currentHtml, this.html));
     try {
-      const result: NgaArticleImageSaveResult = await ArticleImageSaver.save(url, context,
-        (): boolean => this.attached && currentHtml === this.html);
-      if (this.attached && currentHtml === this.html && !result.cancelled && result.message.length > 0) {
+      const result: NgaArticleImageSaveResult = await ArticleImageSaver.save(url, context, isCurrentArticle);
+      if (isCurrentArticle() && !result.cancelled && result.message.length > 0) {
         this.getUIContext().getPromptAction().showToast({ message: result.message });
       }
     } catch (error) {
-      if (this.attached && currentHtml === this.html) {
+      if (isCurrentArticle()) {
         this.getUIContext().getPromptAction().showToast({ message: '图片保存失败，请稍后重试' });
       }
     } finally {
@@ -165,6 +179,7 @@ export struct ArticleBody {
           const nextWidth: number = Number(newArea.width);
           if (nextWidth > 0 && nextWidth !== this.bodyWidth) {
             this.bodyWidth = nextWidth;
+            this.preserveThemeHeight = false;
             this.bodyHeight = 32;
             this.scheduleBodyMeasure(false);
           }

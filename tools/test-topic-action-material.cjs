@@ -36,6 +36,10 @@ const Color = { White: '#ffffffff' };
 const themeModule = { exports: {} };
 evaluateTheme(id => {
   if (id === '@kit.AbilityKit' || id === '@kit.ArkUI' || id === '@kit.PerformanceAnalysisKit') return {};
+  if (id === './AppSettings') return {
+    NightModePolicy: { SYSTEM: 0, LIGHT: 1, DARK: 2 },
+    SettingsStore: { getNightModePolicy() { assert.fail('Material colors must use their explicit appearance input'); } }
+  };
   throw new Error('Unexpected theme dependency: ' + id);
 }, themeModule, themeModule.exports, BlurStyle, ThemeColorMode, Color);
 

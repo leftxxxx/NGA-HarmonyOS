@@ -75,6 +75,7 @@ export class NgaJsonParser {
         thread.replies = NgaJsonParser.readNumber(itemRecord['replies']);
         thread.lastPoster = NgaJsonParser.readString(itemRecord['lastposter']);
         thread.postDate = NgaJsonParser.readNumber(itemRecord['postdate']);
+        thread.recommend = NgaJsonParser.readNumber(itemRecord['recommend']);
         result.threadPageList.push(thread);
       }
       if (topicRows.length > 0 && result.threadPageList.length === 0) {
@@ -388,6 +389,43 @@ export class NgaJsonParser {
       return errorText || NgaJsonParser.readString(data['0']).replace(/<[^>]*>/g, '').trim();
     } catch (err) {
       return '';
+    }
+  }
+
+  /** 仅在接口明确确认时更新楼层投票高亮；未知结果不能冒充已投票。 */
+  static parsePostVoteDirection(body: string, requestedVote: number): number | undefined {
+    if (requestedVote !== 1 && requestedVote !== -1) {
+      return undefined;
+    }
+    try {
+      const root: Record<string, Object> | undefined =
+        NgaJsonParser.asRecord(JSON.parse(NgaJsonParser.cleanJsonWrapper(body)) as Object);
+      if (root === undefined) {
+        return undefined;
+      }
+      const data: Record<string, Object> = NgaJsonParser.asRecord(root['data']) ?? root;
+      // 分别检查 data.error，避免根节点的 error=0 掩盖实际业务错误。
+      const rootMessage: Record<string, Object> | undefined = NgaJsonParser.asRecord(root['__MESSAGE']);
+      if (NgaJsonParser.getApiError(root, data, '0').length > 0 ||
+        NgaJsonParser.getApiError(data, data, '0').length > 0 ||
+        (rootMessage !== undefined && NgaJsonParser.readNumber(rootMessage['0']) !== 0)) {
+        return undefined;
+      }
+      const message: string = NgaJsonParser.readString(data['0'])
+        .replace(new RegExp('<[^>]*>', 'g'), '').replace(new RegExp('\\s+', 'g'), '');
+      const withdrawn: RegExp = new RegExp(
+        '^(?:你|您)(?:已经|已)?(?:取消|撤回)了?对(?:这个帖子|该帖子|本帖)的?(?:支持|反对)[。！!]?$');
+      if (withdrawn.test(message)) {
+        return 0;
+      }
+      const confirmed: RegExpMatchArray | null = message.match(new RegExp(
+        '^(?:你|您)(?:已经|已)?对(?:这个帖子|该帖子|本帖)表示(支持|反对)[。！!]?$'));
+      if (confirmed !== null) {
+        return confirmed[1] === '支持' ? 1 : -1;
+      }
+      return undefined;
+    } catch (err) {
+      return undefined;
     }
   }
 

@@ -103,6 +103,19 @@ test('numeric strings and sparse numeric-key rows are parsed in numeric order', 
   assert.equal(result.threadPageList[2].postDate, 1498529634);
 });
 
+test('topic recommendation accepts numeric strings and defaults missing or invalid values to zero', () => {
+  for (const [recommend, expected] of [
+    [10, 10], ['10', 10], [' 11 ', 11], [9, 9], [0, 0],
+    [undefined, 0], [null, 0], ['', 0], ['10oops', 0], ['10.0', 0],
+    ['NaN', 0], ['Infinity', 0], [true, 0], [{}, 0], [[], 0]
+  ]) {
+    const result = parse({ data: { __T: [{ ...row, recommend }] } });
+    assert.equal(result.success, true, result.error);
+    assert.equal(result.threadPageList[0].recommend, expected, `recommend=${JSON.stringify(recommend)}`);
+    assert.equal(result.threadPageList[0].subject, row.subject);
+  }
+});
+
 test('sub_forums serialized as JSON also works', () => {
   const result = parse({ data: {
     __T: { 0: row }, __F: { sub_forums: JSON.stringify(fixture.data.__F.sub_forums) }
