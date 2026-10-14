@@ -59,6 +59,71 @@ function assertAppearance(f, policy, dark) {
   assert.equal(f.storage.get(f.NIGHT_POLICY_STORAGE_KEY), policy);
 }
 
+// Execute the settings page's real menu handler without mounting ArkUI's declarative layout.
+function settingsPageMenuFixture(f, index, cancelled = false) {
+  const filename = path.join(etsRoot, 'pages/SettingsPage.ets');
+  const source = fs.readFileSync(filename, 'utf8');
+  const start = source.indexOf('  private nightModePolicyLabel(): string {');
+  const end = source.indexOf('  /* ---------- 状态与工具方法 ---------- */', start);
+  assert.ok(start >= 0 && end > start, 'night mode menu handler must be available');
+  const output = ts.transpileModule('class NgaSettingsMenuHarness {\n' +
+    source.slice(start, end) + '\n}\nexports.NgaSettingsMenuHarness = NgaSettingsMenuHarness;', {
+    compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS }
+  });
+  const calls = [];
+  const sandbox = vm.createContext({
+    exports: {}, NightModePolicy: f.NightModePolicy, SettingsStore: f.SettingsStore,
+    applyApplicationColorMode(context) { calls.push(['app', context]); },
+    applyWindowTheme(context, dark) { calls.push(['window', context, dark]); }
+  });
+  vm.runInContext(output.outputText, sandbox, { filename });
+  const page = new sandbox.exports.NgaSettingsMenuHarness();
+  page.ctx = f.context;
+  page.nightModePolicy = f.SettingsStore.getNightModePolicy();
+  page.accentTextColor = () => '#0066CC';
+  let menu;
+  page.getUIContext = () => ({ getPromptAction: () => ({
+    async showActionMenu(options) {
+      menu = options;
+      if (cancelled) throw new Error('user cancelled');
+      return { index };
+    }
+  }) });
+  return { page, calls, getMenu: () => menu };
+}
+
+test('night menu selections map open, closed and system to the existing saved policies', async () => {
+  for (const systemColor of [colorMode.COLOR_MODE_LIGHT, colorMode.COLOR_MODE_DARK]) {
+    for (const [index, expectedPolicy, manualDark] of [[0, 2, true], [1, 1, false], [2, 0, null]]) {
+      const f = settingsFixture();
+      f.SettingsStore.initializeAppearance(systemColor);
+      const h = settingsPageMenuFixture(f, index);
+      await h.page.chooseNightMode();
+      const expectedDark = manualDark ?? (systemColor === colorMode.COLOR_MODE_DARK);
+      assertAppearance(f, expectedPolicy, expectedDark);
+      assert.equal(f.backing.get(f.SettingKeys.NIGHT_MODE), expectedPolicy);
+      assert.deepEqual(h.calls, [['app', f.context], ['window', f.context, expectedDark]],
+        'selection must update the native policy and effective window palette');
+      const menu = h.getMenu();
+      assert.equal(menu.buttons[index].text, index === 0 ? '开' : index === 1 ? '关' : '跟随系统');
+      h.page.nightModePolicy = expectedPolicy;
+      assert.equal(h.page.nightModePolicyLabel(), menu.buttons[index].text,
+        'current selection must describe the policy selected by that menu position');
+    }
+  }
+});
+
+test('cancelling the night mode menu preserves manual policy and performs no appearance updates', async () => {
+  const f = settingsFixture(new Map([['night_mode_policy', 2]]));
+  f.SettingsStore.initializeAppearance(colorMode.COLOR_MODE_LIGHT);
+  const h = settingsPageMenuFixture(f, 1, true);
+  const writes = f.events.filter(event => event[0] === 'put').length;
+  await h.page.chooseNightMode();
+  assertAppearance(f, f.NightModePolicy.DARK, true);
+  assert.deepEqual(h.calls, []);
+  assert.equal(f.events.filter(event => event[0] === 'put').length, writes);
+});
+
 test('new installs follow the system and missing configuration has a stable light fallback', () => {
   const f = settingsFixture();
   f.SettingsStore.initializeAppearance();

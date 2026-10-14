@@ -128,7 +128,11 @@ function articleImageHtml(target: string, attachmentBase: string,
   const imageClass: string = localValid ?
     (rawfile.startsWith('emoticon/ac/') || rawfile.startsWith('emoticon/a2/') ? 'emoticon invertFilter' : 'emoticon') :
     'article-image';
-  const image: string = '<img class="' + imageClass + '" src="' + escapeHtml(source) + '" alt="图片">';
+  // Preserve the mapped local resource for native rendering of old [img] emoticon URLs.
+  // Normal attachment markup stays exact because it is also the image view/save allowlist.
+  const rawfileHint: string = localValid ? ' data-nga-rawfile="' + escapeHtml(rawfile) + '"' : '';
+  const image: string = '<img class="' + imageClass + '" src="' + escapeHtml(source) +
+    '" alt="图片"' + rawfileHint + '>';
   // A native URL interception handles viewing; article JavaScript remains disabled.
   return localValid ? image : '<a class="article-image-link" href="nga-image:' +
     encodeURIComponent(url) + '">' + image + '</a>';

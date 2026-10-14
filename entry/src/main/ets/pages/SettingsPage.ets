@@ -253,8 +253,8 @@ struct SettingsPage {
   }
 
   private nightModePolicyLabel(): string {
-    return this.nightModePolicy === NightModePolicy.DARK ? '始终开启' :
-      (this.nightModePolicy === NightModePolicy.LIGHT ? '始终关闭' : '跟随系统');
+    return this.nightModePolicy === NightModePolicy.DARK ? '开' :
+      (this.nightModePolicy === NightModePolicy.LIGHT ? '关' : '跟随系统');
   }
 
   private async chooseNightMode(): Promise<void> {
@@ -262,13 +262,13 @@ struct SettingsPage {
       const choice = await this.getUIContext().getPromptAction().showActionMenu({
         title: '夜间模式',
         buttons: [
-          { text: '跟随系统', color: this.accentTextColor() },
-          { text: '始终开启', color: this.accentTextColor() },
-          { text: '始终关闭', color: this.accentTextColor() }
+          { text: '开', color: this.accentTextColor() },
+          { text: '关', color: this.accentTextColor() },
+          { text: '跟随系统', color: this.accentTextColor() }
         ]
       });
-      const policy: NightModePolicy = choice.index === 1 ? NightModePolicy.DARK :
-        (choice.index === 2 ? NightModePolicy.LIGHT : NightModePolicy.SYSTEM);
+      const policy: NightModePolicy = choice.index === 0 ? NightModePolicy.DARK :
+        (choice.index === 1 ? NightModePolicy.LIGHT : NightModePolicy.SYSTEM);
       SettingsStore.setNightModePolicy(policy);
       applyApplicationColorMode(this.ctx);
       applyWindowTheme(this.ctx, SettingsStore.isNightMode());
